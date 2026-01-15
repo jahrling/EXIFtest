@@ -740,8 +740,8 @@
             
             e.preventDefault();
             isDragging = true;
-            startX = e.clientX - translateX;
-            startY = e.clientY - translateY;
+            startX = e.clientX;
+            startY = e.clientY;
             imageContainer.style.cursor = 'grabbing';
         });
 
@@ -749,8 +749,20 @@
             if (!isDragging) return;
             
             e.preventDefault();
-            translateX = e.clientX - startX;
-            translateY = e.clientY - startY;
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
+            
+            // Transform delta based on rotation
+            const rotRad = (currentRotation * Math.PI) / 180;
+            const transformedDeltaX = deltaX * Math.cos(rotRad) + deltaY * Math.sin(rotRad);
+            const transformedDeltaY = -deltaX * Math.sin(rotRad) + deltaY * Math.cos(rotRad);
+            
+            translateX += transformedDeltaX;
+            translateY += transformedDeltaY;
+            
+            startX = e.clientX;
+            startY = e.clientY;
+            
             updateImageTransform();
         });
 
@@ -790,8 +802,8 @@
                     if (currentScale > 1) {
                         e.preventDefault();
                         isDragging = true;
-                        startX = touches[0].clientX - translateX;
-                        startY = touches[0].clientY - translateY;
+                        startX = touches[0].clientX;
+                        startY = touches[0].clientY;
                     }
                 }
             }
@@ -814,8 +826,20 @@
             } else if (touches.length === 1 && isDragging) {
                 // Single touch pan
                 e.preventDefault();
-                translateX = touches[0].clientX - startX;
-                translateY = touches[0].clientY - startY;
+                const deltaX = touches[0].clientX - startX;
+                const deltaY = touches[0].clientY - startY;
+                
+                // Transform delta based on rotation
+                const rotRad = (currentRotation * Math.PI) / 180;
+                const transformedDeltaX = deltaX * Math.cos(rotRad) + deltaY * Math.sin(rotRad);
+                const transformedDeltaY = -deltaX * Math.sin(rotRad) + deltaY * Math.cos(rotRad);
+                
+                translateX += transformedDeltaX;
+                translateY += transformedDeltaY;
+                
+                startX = touches[0].clientX;
+                startY = touches[0].clientY;
+                
                 updateImageTransform();
             }
         });
@@ -829,8 +853,8 @@
                 lastTouchDistance = 0;
                 if (currentScale > 1) {
                     isDragging = true;
-                    startX = e.touches[0].clientX - translateX;
-                    startY = e.touches[0].clientY - translateY;
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
                 }
             }
         });
@@ -888,14 +912,28 @@
         }
 
         function extractEXIF(imageDataUrl) {
+            console.log('Starting EXIF extraction');
             const img = new Image();
             img.onload = function() {
-                EXIF.getData(img, function() {
-                    const allTags = EXIF.getAllTags(this);
-                    currentImageData = allTags;
-                    displayEXIF(allTags);
-                    updateTimestampDisplay();
-                });
+                console.log('Image loaded for EXIF extraction');
+                try {
+                    EXIF.getData(img, function() {
+                        console.log('EXIF.getData callback triggered');
+                        const allTags = EXIF.getAllTags(this);
+                        console.log('Raw EXIF tags:', allTags);
+                        console.log('Number of EXIF tags:', Object.keys(allTags).length);
+                        currentImageData = allTags;
+                        displayEXIF(allTags);
+                        updateTimestampDisplay();
+                    });
+                } catch (error) {
+                    console.error('Error extracting EXIF:', error);
+                    showStatus('Error reading image metadata', 'error');
+                }
+            };
+            img.onerror = function() {
+                console.error('Failed to load image for EXIF extraction');
+                showStatus('Error loading image', 'error');
             };
             img.src = imageDataUrl;
         }
@@ -967,23 +1005,34 @@
         }
 
         function updateTimestampDisplay() {
-            if (!currentImageData) return;
+            if (!currentImageData) {
+                console.log('No EXIF data available');
+                timestampDisplay.classList.add('hidden');
+                return;
+            }
             
             // Try to get DateTime from EXIF
             const dateTimeStr = currentImageData.DateTime || 
                                currentImageData.DateTimeOriginal || 
                                currentImageData.DateTimeDigitized;
             
+            console.log('DateTime from EXIF:', dateTimeStr);
+            console.log('All EXIF data:', currentImageData);
+            
             if (!dateTimeStr) {
+                console.log('No timestamp found in EXIF');
                 timestampDisplay.classList.add('hidden');
                 return;
             }
             
             const localDateTime = parseEXIFDateTime(dateTimeStr);
             if (!localDateTime) {
+                console.log('Failed to parse EXIF datetime:', dateTimeStr);
                 timestampDisplay.classList.add('hidden');
                 return;
             }
+            
+            console.log('Parsed local datetime:', localDateTime);
             
             // Get timezone offset in minutes
             const tzOffset = getTimezoneOffset(timezone.value);
@@ -994,14 +1043,26 @@
             // Format original time (don't convert to ISO, keep as local datetime string)
             const originalTimeStr = formatLocalDateTime(localDateTime) + ' (' + timezone.value + ')';
             
-            // Display both times
-            document.getElementById('originalTime').textContent = originalTimeStr;
-            document.getElementById('utcTime').textContent = utcDateTime.toISOString();
+            console.log('Original time:', originalTimeStr);
+            console.log('UTC time:', utcDateTime.toISOString());
             
-            timestampDisplay.classList.remove('hidden');
+            // Display both times
+            const originalTimeElement = document.getElementById('originalTime');
+            const utcTimeElement = document.getElementById('utcTime');
+            
+            if (originalTimeElement && utcTimeElement) {
+                originalTimeElement.textContent = originalTimeStr;
+                utcTimeElement.textContent = utcDateTime.toISOString();
+                timestampDisplay.classList.remove('hidden');
+            } else {
+                console.error('Timestamp display elements not found');
+            }
         }
         
         function formatLocalDateTime(date) {
+            if (!date || isNaN(date.getTime())) {
+                return 'Invalid Date';
+            }
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
@@ -1035,7 +1096,7 @@
         saveBtn.addEventListener('click', async () => {
             // Check if we're in the second step (saving image)
             if (pendingImageSave) {
-                downloadFile(pendingImageSave, pendingImageFilename);
+                await saveFileToDevice(pendingImageSave, pendingImageFilename);
                 
                 // Reset button
                 saveBtn.textContent = 'Save Image & JSON';
@@ -1119,7 +1180,7 @@
             } else {
                 // iOS or other browsers - save JSON first
                 const jsonBlob = new Blob([jsonString], { type: 'application/json' });
-                downloadFile(jsonBlob, jsonFilename);
+                await saveFileToDevice(jsonBlob, jsonFilename);
                 
                 // Store image for second save
                 pendingImageSave = currentImageFile;
@@ -1131,6 +1192,30 @@
                 showStatus('JSON saved! Tap button again to save image', 'success');
             }
         });
+        
+        async function saveFileToDevice(blob, filename) {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            
+            // Try Web Share API first (works better on iOS)
+            if (isIOS && navigator.share && navigator.canShare) {
+                try {
+                    const file = new File([blob], filename, { type: blob.type });
+                    if (navigator.canShare({ files: [file] })) {
+                        await navigator.share({
+                            files: [file],
+                            title: 'Save file'
+                        });
+                        return;
+                    }
+                } catch (error) {
+                    console.log('Share API failed, falling back to download:', error);
+                    // Fall through to download method
+                }
+            }
+            
+            // Fallback to standard download
+            downloadFile(blob, filename);
+        }
         
         function downloadFile(blob, filename) {
             const url = URL.createObjectURL(blob);

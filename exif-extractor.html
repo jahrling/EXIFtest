@@ -1,4 +1,17 @@
 <!DOCTYPE html>
+<!--
+    Water Meter Photo Logger
+    
+    SETUP INSTRUCTIONS FOR GPS TIMEZONE DETECTION:
+    
+    1. Sign up for a free Geoapify account at https://www.geoapify.com/
+    2. Get your API key from the dashboard (3,000 requests/day free)
+    3. Find the line: const apiKey = 'YOUR_GEOAPIFY_API_KEY';
+    4. Replace 'YOUR_GEOAPIFY_API_KEY' with your actual API key
+    5. Save and upload to GitHub
+    
+    When enabled, photos with GPS data will automatically suggest the correct timezone!
+-->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -231,6 +244,28 @@
         
         .rotation-btn:active {
             transform: scale(0.95);
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
         }
         
         .filename {
@@ -1350,7 +1385,124 @@
                 console.log('extractGPSData: GPS Version ID:', gpsData.gpsVersionID);
             }
             
+            // If we have valid GPS coordinates, fetch timezone
+            if (gpsData.latitude !== null && gpsData.longitude !== null) {
+                // Adjust for hemisphere
+                const lat = gpsData.latitudeRef === 'S' ? -gpsData.latitude : gpsData.latitude;
+                const lon = gpsData.longitudeRef === 'W' ? -gpsData.longitude : gpsData.longitude;
+                
+                fetchTimezoneFromCoordinates(lat, lon);
+            }
+            
             return gpsData;
+        }
+        
+        async function fetchTimezoneFromCoordinates(lat, lon) {
+            try {
+                console.log(`Fetching timezone for coordinates: ${lat}, ${lon}`);
+                
+                // Using Geoapify timezone API (3000 requests/day free tier)
+                // You'll need to sign up at https://www.geoapify.com/ and get an API key
+                // For now, this is a placeholder - user needs to add their own API key
+                const apiKey = '52aa760baa2d4cce98f863592adba79f'; // User needs to replace this
+                
+                if (apiKey === 'YOUR_GEOAPIFY_API_KEY') {
+                    console.log('⚠️ Geoapify API key not configured. Skipping timezone lookup.');
+                    console.log('Sign up at https://www.geoapify.com/ for free API key (3000 requests/day)');
+                    return;
+                }
+                
+                const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lon}&apiKey=${apiKey}`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.features && data.features.length > 0) {
+                    const timezoneStr = data.features[0].properties.timezone?.name;
+                    
+                    if (timezoneStr) {
+                        console.log('Detected timezone:', timezoneStr);
+                        
+                        // Convert IANA timezone to UTC offset
+                        const utcOffset = getUTCOffsetFromTimezone(timezoneStr);
+                        
+                        if (utcOffset) {
+                            console.log('Recommended timezone:', utcOffset);
+                            
+                            // Update the timezone dropdown
+                            timezone.value = utcOffset;
+                            
+                            // Show a notification
+                            showTimezoneRecommendation(utcOffset, timezoneStr);
+                            
+                            // Update timestamp display
+                            const isFromCamera = manualDateTimeInput.classList.contains('hidden') && 
+                                                !timestampDisplay.classList.contains('hidden');
+                            updateTimestampDisplay(isFromCamera);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching timezone:', error);
+            }
+        }
+        
+        function getUTCOffsetFromTimezone(ianaTimezone) {
+            // This maps IANA timezone names to UTC offsets
+            // Note: This is approximate and doesn't handle DST automatically
+            // For production, you'd want a proper timezone library
+            const timezoneMap = {
+                'America/Chicago': 'UTC-06:00',
+                'America/New_York': 'UTC-05:00',
+                'America/Los_Angeles': 'UTC-08:00',
+                'America/Denver': 'UTC-07:00',
+                'America/Phoenix': 'UTC-07:00',
+                'America/Anchorage': 'UTC-09:00',
+                'Pacific/Honolulu': 'UTC-10:00',
+                'Europe/London': 'UTC+00:00',
+                'Europe/Paris': 'UTC+01:00',
+                'Europe/Berlin': 'UTC+01:00',
+                'Asia/Tokyo': 'UTC+09:00',
+                'Asia/Shanghai': 'UTC+08:00',
+                'Asia/Dubai': 'UTC+04:00',
+                'Asia/Kolkata': 'UTC+05:30',
+                'Australia/Sydney': 'UTC+10:00',
+                'Pacific/Auckland': 'UTC+12:00'
+                // Add more as needed
+            };
+            
+            return timezoneMap[ianaTimezone] || null;
+        }
+        
+        function showTimezoneRecommendation(utcOffset, ianaTimezone) {
+            // Create a temporary notification
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #10b981;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10000;
+                max-width: 300px;
+                animation: slideIn 0.3s ease;
+            `;
+            notification.innerHTML = `
+                <div style="font-weight: 600; margin-bottom: 5px;">📍 Timezone Detected from GPS</div>
+                <div style="font-size: 14px;">${ianaTimezone}</div>
+                <div style="font-size: 14px;">Set to: ${utcOffset}</div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
         }
         
         function convertGPSCoordinate(coord) {

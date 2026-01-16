@@ -6,6 +6,27 @@
     - Geoapify API key is configured (3,000 requests/day free)
     - Photos with GPS data will automatically suggest the correct timezone
     - Green notification will appear when timezone is detected
+    
+    SHAREPOINT UPLOAD SETUP:
+    To enable "Save to SharePoint" button, you need to register an Azure AD app:
+    
+    1. Go to Azure Portal: https://portal.azure.com
+    2. Navigate to: Azure Active Directory → App registrations → New registration
+    3. Fill in:
+       - Name: "Water Meter Photo Logger" (or any name)
+       - Supported account types: "Accounts in this organizational directory only"
+       - Redirect URI: 
+         Platform: Single-page application (SPA)
+         URL: https://jahrling.github.io/EXIFtest/ (your GitHub Pages URL)
+    4. Click "Register"
+    5. On the app's Overview page, copy the "Application (client) ID"
+    6. Go to "API permissions" → Add a permission → Microsoft Graph → Delegated permissions
+       Add: Files.ReadWrite.All, Sites.ReadWrite.All
+    7. Click "Grant admin consent" (if you're an admin) or ask your IT admin
+    8. In this HTML file, find "YOUR_AZURE_APP_CLIENT_ID" and replace with your actual client ID
+    
+    Current SharePoint target folder:
+    /sites/MarlinProductEngineering2/Shared Documents/Mobile/EXIF
 -->
 <html lang="en">
 <head>
@@ -13,6 +34,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Water Meter Photo Logger</title>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -665,6 +687,7 @@
             
             <div class="button-group">
                 <button class="btn-primary" id="saveBtn">Save Image & JSON</button>
+                <button class="btn-primary" id="saveSharePointBtn" style="background: linear-gradient(135deg, #0078d4 0%, #106ebe 100%);">📤 Save to SharePoint</button>
                 <button class="btn-secondary" id="resetBtn">Upload Another</button>
             </div>
             
@@ -677,6 +700,38 @@
         let currentImageFile = null;
         let currentFilename = null;
         let photoCaptureTime = null; // Timestamp when photo was uploaded/captured
+        
+        // ============================================
+        // SHAREPOINT CONFIGURATION
+        // ============================================
+        // TO ENABLE SHAREPOINT: You need to register an Azure AD app
+        // Instructions: https://learn.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app
+        // 1. Go to Azure Portal > Azure Active Directory > App registrations > New registration
+        // 2. Set redirect URI to your GitHub Pages URL (e.g., https://jahrling.github.io/EXIFtest/)
+        // 3. Grant API permissions: Files.ReadWrite.All, Sites.ReadWrite.All
+        // 4. Copy the Application (client) ID and paste below
+        
+        const msalConfig = {
+            auth: {
+                clientId: "YOUR_AZURE_APP_CLIENT_ID", // Replace with your Azure AD app client ID
+                authority: "https://login.microsoftonline.com/common", // Use 'common' for multi-tenant
+                redirectUri: window.location.origin
+            },
+            cache: {
+                cacheLocation: "sessionStorage",
+                storeAuthStateInCookie: false
+            }
+        };
+        
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+        
+        // SharePoint location configuration
+        const sharePointConfig = {
+            siteUrl: "wattswater1.sharepoint.com",
+            sitePath: "/sites/MarlinProductEngineering2",
+            libraryName: "Shared Documents",
+            folderPath: "Mobile/EXIF"
+        };
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -694,6 +749,7 @@
         const manualDateTimeInput = document.getElementById('manualDateTimeInput');
         const manualDate = document.getElementById('manualDate');
         const manualTime = document.getElementById('manualTime');
+        const saveSharePointBtn = document.getElementById('saveSharePointBtn');
         const exifToggle = document.getElementById('exifToggle');
         const exifToggleIcon = document.getElementById('exifToggleIcon');
         const exifData = document.getElementById('exifData');
@@ -1765,6 +1821,211 @@
             
             // Fallback to standard download
             downloadFile(blob, filename);
+        }
+        
+        // ============================================
+        // SHAREPOINT UPLOAD FUNCTIONALITY
+        // ============================================
+        
+        saveSharePointBtn.addEventListener('click', async () => {
+            // Check if Azure AD app is configured
+            if (msalConfig.auth.clientId === 'YOUR_AZURE_APP_CLIENT_ID') {
+                showStatus('SharePoint not configured. See setup instructions in code comments.', 'error');
+                console.error('SharePoint Upload: Azure AD app not configured. See comments at top of JavaScript section.');
+                return;
+            }
+            
+            // Validate required fields (same as regular save)
+            const orgId = document.getElementById('orgId').value.trim();
+            const deviceId = document.getElementById('deviceId').value.trim();
+            const meterName = document.getElementById('meterName').value.trim();
+            const reading1 = document.getElementById('reading1').value;
+            const meterTypeValue = meterType.value;
+            const unitsValue = document.getElementById('units').value;
+            
+            if (!orgId || !deviceId || !meterName || !reading1) {
+                showStatus('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            // Check if manual datetime is required and filled
+            if (!manualDateTimeInput.classList.contains('hidden')) {
+                if (!manualDate.value || !manualTime.value) {
+                    showStatus('Please enter the date and time when the photo was taken', 'error');
+                    return;
+                }
+            }
+            
+            try {
+                showStatus('Authenticating with SharePoint...', 'success');
+                
+                // Acquire access token
+                const accessToken = await getSharePointAccessToken();
+                
+                if (!accessToken) {
+                    showStatus('Authentication failed or cancelled', 'error');
+                    return;
+                }
+                
+                showStatus('Uploading to SharePoint...', 'success');
+                
+                // Build meter readings object
+                const meterReadings = {
+                    reading1: parseFloat(reading1),
+                    units: unitsValue
+                };
+                
+                const reading2Value = document.getElementById('reading2').value;
+                if (meterTypeValue === 'compound' && reading2Value) {
+                    meterReadings.reading2 = parseFloat(reading2Value);
+                }
+                
+                // Extract GPS data
+                const gpsData = extractGPSData();
+                
+                // Create JSON data
+                const jsonData = {
+                    filename: currentFilename,
+                    orgId: orgId,
+                    deviceId: deviceId,
+                    meterName: meterName,
+                    meterType: meterTypeValue,
+                    meterReadings: meterReadings,
+                    OffsetTimeOriginal: timezone.value,
+                    timestamp_utc: getUTCTimestamp(),
+                    DateTimeOriginal: getOriginalDateTime(),
+                    gps: {
+                        latitude: gpsData.latitude,
+                        latitudeRef: gpsData.latitudeRef,
+                        longitude: gpsData.longitude,
+                        longitudeRef: gpsData.longitudeRef,
+                        gpsVersionID: gpsData.gpsVersionID
+                    }
+                };
+                
+                const jsonString = JSON.stringify(jsonData, null, 2);
+                const jsonFilename = currentFilename.replace(/\.[^/.]+$/, '') + '.json';
+                
+                // Upload both files to SharePoint
+                await uploadToSharePoint(accessToken, currentImageFile, currentFilename);
+                await uploadToSharePoint(accessToken, new Blob([jsonString], { type: 'application/json' }), jsonFilename);
+                
+                showStatus(`✅ Successfully uploaded to SharePoint: ${currentFilename} and ${jsonFilename}`, 'success');
+                
+            } catch (error) {
+                console.error('SharePoint upload error:', error);
+                showStatus(`SharePoint upload failed: ${error.message}`, 'error');
+            }
+        });
+        
+        async function getSharePointAccessToken() {
+            try {
+                // Try silent token acquisition first (uses existing session)
+                const accounts = msalInstance.getAllAccounts();
+                
+                if (accounts.length > 0) {
+                    const silentRequest = {
+                        scopes: ["Files.ReadWrite.All", "Sites.ReadWrite.All"],
+                        account: accounts[0]
+                    };
+                    
+                    try {
+                        const response = await msalInstance.acquireTokenSilent(silentRequest);
+                        console.log('SharePoint: Token acquired silently');
+                        return response.accessToken;
+                    } catch (silentError) {
+                        console.log('SharePoint: Silent token acquisition failed, trying popup');
+                    }
+                }
+                
+                // Fall back to interactive login
+                const loginRequest = {
+                    scopes: ["Files.ReadWrite.All", "Sites.ReadWrite.All"]
+                };
+                
+                const response = await msalInstance.loginPopup(loginRequest);
+                console.log('SharePoint: Token acquired via popup');
+                return response.accessToken;
+                
+            } catch (error) {
+                console.error('SharePoint authentication error:', error);
+                throw new Error('Authentication failed');
+            }
+        }
+        
+        async function uploadToSharePoint(accessToken, fileBlob, filename) {
+            try {
+                // Get site ID first
+                const siteResponse = await fetch(
+                    `https://graph.microsoft.com/v1.0/sites/${sharePointConfig.siteUrl}:${sharePointConfig.sitePath}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    }
+                );
+                
+                if (!siteResponse.ok) {
+                    throw new Error(`Failed to get site info: ${siteResponse.status}`);
+                }
+                
+                const siteData = await siteResponse.json();
+                const siteId = siteData.id;
+                
+                console.log('SharePoint Site ID:', siteId);
+                
+                // Get drive ID for the document library
+                const drivesResponse = await fetch(
+                    `https://graph.microsoft.com/v1.0/sites/${siteId}/drives`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    }
+                );
+                
+                if (!drivesResponse.ok) {
+                    throw new Error(`Failed to get drives: ${drivesResponse.status}`);
+                }
+                
+                const drivesData = await drivesResponse.json();
+                const drive = drivesData.value.find(d => d.name === sharePointConfig.libraryName);
+                
+                if (!drive) {
+                    throw new Error(`Drive '${sharePointConfig.libraryName}' not found`);
+                }
+                
+                const driveId = drive.id;
+                console.log('SharePoint Drive ID:', driveId);
+                
+                // Upload file
+                const uploadUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/drives/${driveId}/root:/${sharePointConfig.folderPath}/${filename}:/content`;
+                
+                console.log('Uploading to:', uploadUrl);
+                
+                const uploadResponse = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': fileBlob.type || 'application/octet-stream'
+                    },
+                    body: fileBlob
+                });
+                
+                if (!uploadResponse.ok) {
+                    const errorText = await uploadResponse.text();
+                    throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
+                }
+                
+                const uploadData = await uploadResponse.json();
+                console.log('File uploaded successfully:', uploadData);
+                
+                return uploadData;
+                
+            } catch (error) {
+                console.error('SharePoint upload error:', error);
+                throw error;
+            }
         }
         
         function downloadFile(blob, filename) {

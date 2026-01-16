@@ -1465,6 +1465,9 @@
                 }
                 
                 console.log(`GPS coordinates: ${lat}, ${lon}`);
+                showDebugInfo(`GPS: ${lat.toFixed(4)}, ${lon.toFixed(4)} - Fetching timezone...`);
+                
+                // Fetch timezone from coordinates
                 fetchTimezoneFromCoordinates(lat, lon);
             } else {
                 // Hide GPS display if no coordinates
@@ -1472,6 +1475,7 @@
                 if (gpsDisplay) {
                     gpsDisplay.classList.add('hidden');
                 }
+                showDebugInfo('No GPS coordinates found in EXIF data');
             }
             
             return gpsData;
@@ -1480,6 +1484,9 @@
         async function fetchTimezoneFromCoordinates(lat, lon) {
             try {
                 console.log(`Fetching timezone for coordinates: ${lat}, ${lon}`);
+                
+                // Show loading indicator
+                showStatus('🌍 Looking up timezone from GPS coordinates...', 'success');
                 
                 // Using Geoapify timezone API (3000 requests/day free tier)
                 const apiKey = '52aa760baa2d4cce98f863592adba79f';
@@ -1498,23 +1505,38 @@
                 console.log('API response status:', response.status);
                 
                 if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API error response:', errorText);
+                    showStatus(`⚠️ Timezone API error: ${response.status}`, 'error');
                     throw new Error(`API request failed with status ${response.status}`);
                 }
                 
                 const data = await response.json();
-                console.log('API response data:', data);
+                console.log('API response data:', JSON.stringify(data, null, 2));
                 
+                // Extract timezone from nested structure
                 if (data.features && data.features.length > 0) {
-                    const timezoneStr = data.features[0].properties.timezone?.name;
+                    const feature = data.features[0];
+                    const properties = feature.properties;
+                    const timezoneData = properties.timezone;
                     
-                    if (timezoneStr) {
-                        console.log('Detected timezone:', timezoneStr);
+                    console.log('Timezone data object:', timezoneData);
+                    
+                    if (timezoneData && timezoneData.name) {
+                        const timezoneStr = timezoneData.name;
+                        const offsetSTD = timezoneData.offset_STD;
+                        
+                        console.log('Detected timezone name:', timezoneStr);
+                        console.log('Standard offset:', offsetSTD);
+                        
+                        // Show what we found
+                        showDebugInfo(`Found timezone: ${timezoneStr} (${offsetSTD})`);
                         
                         // Convert IANA timezone to UTC offset
                         const utcOffset = getUTCOffsetFromTimezone(timezoneStr);
                         
                         if (utcOffset) {
-                            console.log('Recommended timezone:', utcOffset);
+                            console.log('Mapped to UTC offset:', utcOffset);
                             
                             // Update the timezone dropdown
                             timezone.value = utcOffset;
@@ -1527,20 +1549,82 @@
                                                 !timestampDisplay.classList.contains('hidden');
                             updateTimestampDisplay(isFromCamera);
                         } else {
-                            console.log('Could not map timezone to UTC offset:', timezoneStr);
-                            showStatus(`GPS timezone detected: ${timezoneStr} (manual mapping needed)`, 'success');
+                            console.log('⚠️ Could not map timezone to UTC offset:', timezoneStr);
+                            showDebugInfo(`⚠️ Timezone ${timezoneStr} not in mapping table. Using ${offsetSTD} from API.`);
+                            showStatus(`GPS timezone detected: ${timezoneStr} (manual selection needed)`, 'error');
                         }
                     } else {
-                        console.log('No timezone in API response');
-                        showStatus('GPS detected but timezone lookup failed', 'error');
+                        console.log('⚠️ No timezone data in properties:', properties);
+                        showDebugInfo('⚠️ No timezone in API response');
+                        showStatus('GPS detected but no timezone information available', 'error');
                     }
                 } else {
-                    console.log('No features in API response');
-                    showStatus('GPS detected but timezone lookup failed', 'error');
+                    console.log('⚠️ No features in API response:', data);
+                    showDebugInfo('⚠️ No location data in API response');
+                    showStatus('GPS detected but location lookup failed', 'error');
                 }
             } catch (error) {
                 console.error('Error fetching timezone:', error);
-                showStatus(`GPS detected but timezone API error: ${error.message}`, 'error');
+                showDebugInfo(`❌ Error: ${error.message}`);
+                showStatus(`Timezone lookup error: ${error.message}`, 'error');
+            }
+        }
+        
+        function showDebugInfo(message) {
+            // Show debug info in a visible panel for iOS debugging
+            let debugPanel = document.getElementById('debugPanel');
+            if (!debugPanel) {
+                debugPanel = document.createElement('div');
+                debugPanel.id = 'debugPanel';
+                debugPanel.style.cssText = `
+                    position: fixed;
+                    bottom: 10px;
+                    left: 10px;
+                    right: 10px;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: #00ff00;
+                    padding: 10px;
+                    border-radius: 8px;
+                    font-family: monospace;
+                    font-size: 11px;
+                    max-height: 150px;
+                    overflow-y: auto;
+                    z-index: 9999;
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                `;
+                document.body.appendChild(debugPanel);
+                
+                // Add close button
+                const closeBtn = document.createElement('button');
+                closeBtn.textContent = '×';
+                closeBtn.style.cssText = `
+                    position: absolute;
+                    top: 5px;
+                    right: 5px;
+                    background: #ff0000;
+                    color: white;
+                    border: none;
+                    border-radius: 50%;
+                    width: 20px;
+                    height: 20px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    line-height: 1;
+                `;
+                closeBtn.onclick = () => debugPanel.remove();
+                debugPanel.appendChild(closeBtn);
+            }
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logEntry.style.marginBottom = '3px';
+            debugPanel.insertBefore(logEntry, debugPanel.firstChild.nextSibling);
+            
+            // Keep only last 20 messages
+            while (debugPanel.children.length > 22) { // 20 messages + close button + spacing
+                debugPanel.removeChild(debugPanel.lastChild);
             }
         }
         

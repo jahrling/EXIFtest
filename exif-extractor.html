@@ -2,15 +2,10 @@
 <!--
     Water Meter Photo Logger
     
-    SETUP INSTRUCTIONS FOR GPS TIMEZONE DETECTION:
-    
-    1. Sign up for a free Geoapify account at https://www.geoapify.com/
-    2. Get your API key from the dashboard (3,000 requests/day free)
-    3. Find the line: const apiKey = 'YOUR_GEOAPIFY_API_KEY';
-    4. Replace 'YOUR_GEOAPIFY_API_KEY' with your actual API key
-    5. Save and upload to GitHub
-    
-    When enabled, photos with GPS data will automatically suggest the correct timezone!
+    GPS TIMEZONE DETECTION IS ENABLED:
+    - Geoapify API key is configured (3,000 requests/day free)
+    - Photos with GPS data will automatically suggest the correct timezone
+    - Green notification will appear when timezone is detected
 -->
 <html lang="en">
 <head>
@@ -632,6 +627,17 @@
                 <div id="timestampDisplay" class="timestamp-display hidden">
                     <div><span class="timestamp-label">Original Time:</span> <span id="originalTime"></span></div>
                     <div><span class="timestamp-label">UTC Time:</span> <span id="utcTime"></span></div>
+                </div>
+                
+                <div id="gpsDisplay" class="timestamp-display hidden" style="background: #f0fdf4; border: 1px solid #86efac;">
+                    <div style="font-weight: 600; color: #15803d; margin-bottom: 5px;">📍 GPS Location Detected</div>
+                    <div><span class="timestamp-label">Latitude:</span> <span id="gpsLat"></span></div>
+                    <div><span class="timestamp-label">Longitude:</span> <span id="gpsLon"></span></div>
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #86efac;">
+                        <a href="https://www.geoapify.com/" target="_blank" style="font-size: 11px; color: #059669; text-decoration: none; opacity: 0.8;">
+                            Powered by Geoapify
+                        </a>
+                    </div>
                 </div>
                 
                 <div id="manualDateTimeInput" class="timestamp-display hidden">
@@ -1391,7 +1397,25 @@
                 const lat = gpsData.latitudeRef === 'S' ? -gpsData.latitude : gpsData.latitude;
                 const lon = gpsData.longitudeRef === 'W' ? -gpsData.longitude : gpsData.longitude;
                 
+                // Show GPS display
+                const gpsDisplay = document.getElementById('gpsDisplay');
+                const gpsLat = document.getElementById('gpsLat');
+                const gpsLon = document.getElementById('gpsLon');
+                
+                if (gpsDisplay && gpsLat && gpsLon) {
+                    gpsLat.textContent = `${lat.toFixed(6)}° ${gpsData.latitudeRef}`;
+                    gpsLon.textContent = `${lon.toFixed(6)}° ${gpsData.longitudeRef}`;
+                    gpsDisplay.classList.remove('hidden');
+                }
+                
+                console.log(`GPS coordinates: ${lat}, ${lon}`);
                 fetchTimezoneFromCoordinates(lat, lon);
+            } else {
+                // Hide GPS display if no coordinates
+                const gpsDisplay = document.getElementById('gpsDisplay');
+                if (gpsDisplay) {
+                    gpsDisplay.classList.add('hidden');
+                }
             }
             
             return gpsData;
@@ -1402,20 +1426,27 @@
                 console.log(`Fetching timezone for coordinates: ${lat}, ${lon}`);
                 
                 // Using Geoapify timezone API (3000 requests/day free tier)
-                // You'll need to sign up at https://www.geoapify.com/ and get an API key
-                // For now, this is a placeholder - user needs to add their own API key
-                const apiKey = '52aa760baa2d4cce98f863592adba79f'; // User needs to replace this
+                const apiKey = '52aa760baa2d4cce98f863592adba79f';
                 
                 if (apiKey === 'YOUR_GEOAPIFY_API_KEY') {
-                    console.log('⚠️ Geoapify API key not configured. Skipping timezone lookup.');
-                    console.log('Sign up at https://www.geoapify.com/ for free API key (3000 requests/day)');
+                    console.log('⚠️ Geoapify API key not configured. Showing GPS data only.');
+                    showStatus('GPS coordinates detected! Set up Geoapify API key for automatic timezone detection.', 'success');
                     return;
                 }
                 
                 const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lon}&apiKey=${apiKey}`;
                 
+                console.log('Making API request to:', url);
+                
                 const response = await fetch(url);
+                console.log('API response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('API response data:', data);
                 
                 if (data.features && data.features.length > 0) {
                     const timezoneStr = data.features[0].properties.timezone?.name;
@@ -1439,11 +1470,21 @@
                             const isFromCamera = manualDateTimeInput.classList.contains('hidden') && 
                                                 !timestampDisplay.classList.contains('hidden');
                             updateTimestampDisplay(isFromCamera);
+                        } else {
+                            console.log('Could not map timezone to UTC offset:', timezoneStr);
+                            showStatus(`GPS timezone detected: ${timezoneStr} (manual mapping needed)`, 'success');
                         }
+                    } else {
+                        console.log('No timezone in API response');
+                        showStatus('GPS detected but timezone lookup failed', 'error');
                     }
+                } else {
+                    console.log('No features in API response');
+                    showStatus('GPS detected but timezone lookup failed', 'error');
                 }
             } catch (error) {
                 console.error('Error fetching timezone:', error);
+                showStatus(`GPS detected but timezone API error: ${error.message}`, 'error');
             }
         }
         
@@ -1452,22 +1493,68 @@
             // Note: This is approximate and doesn't handle DST automatically
             // For production, you'd want a proper timezone library
             const timezoneMap = {
+                // US Timezones
                 'America/Chicago': 'UTC-06:00',
                 'America/New_York': 'UTC-05:00',
                 'America/Los_Angeles': 'UTC-08:00',
                 'America/Denver': 'UTC-07:00',
                 'America/Phoenix': 'UTC-07:00',
                 'America/Anchorage': 'UTC-09:00',
+                'America/Juneau': 'UTC-09:00',
                 'Pacific/Honolulu': 'UTC-10:00',
+                'America/Detroit': 'UTC-05:00',
+                'America/Indianapolis': 'UTC-05:00',
+                'America/Kentucky/Louisville': 'UTC-05:00',
+                'America/Boise': 'UTC-07:00',
+                'America/North_Dakota/Center': 'UTC-06:00',
+                
+                // Canada
+                'America/Toronto': 'UTC-05:00',
+                'America/Vancouver': 'UTC-08:00',
+                'America/Halifax': 'UTC-04:00',
+                'America/Winnipeg': 'UTC-06:00',
+                
+                // Europe
                 'Europe/London': 'UTC+00:00',
                 'Europe/Paris': 'UTC+01:00',
                 'Europe/Berlin': 'UTC+01:00',
+                'Europe/Madrid': 'UTC+01:00',
+                'Europe/Rome': 'UTC+01:00',
+                'Europe/Amsterdam': 'UTC+01:00',
+                'Europe/Brussels': 'UTC+01:00',
+                'Europe/Vienna': 'UTC+01:00',
+                'Europe/Warsaw': 'UTC+01:00',
+                'Europe/Athens': 'UTC+02:00',
+                'Europe/Moscow': 'UTC+03:00',
+                
+                // Asia
                 'Asia/Tokyo': 'UTC+09:00',
                 'Asia/Shanghai': 'UTC+08:00',
+                'Asia/Hong_Kong': 'UTC+08:00',
+                'Asia/Singapore': 'UTC+08:00',
+                'Asia/Seoul': 'UTC+09:00',
                 'Asia/Dubai': 'UTC+04:00',
                 'Asia/Kolkata': 'UTC+05:30',
+                'Asia/Bangkok': 'UTC+07:00',
+                'Asia/Jakarta': 'UTC+07:00',
+                'Asia/Manila': 'UTC+08:00',
+                
+                // Australia & Pacific
                 'Australia/Sydney': 'UTC+10:00',
-                'Pacific/Auckland': 'UTC+12:00'
+                'Australia/Melbourne': 'UTC+10:00',
+                'Australia/Brisbane': 'UTC+10:00',
+                'Australia/Perth': 'UTC+08:00',
+                'Pacific/Auckland': 'UTC+12:00',
+                
+                // South America
+                'America/Sao_Paulo': 'UTC-03:00',
+                'America/Mexico_City': 'UTC-06:00',
+                'America/Buenos_Aires': 'UTC-03:00',
+                
+                // Africa
+                'Africa/Cairo': 'UTC+02:00',
+                'Africa/Johannesburg': 'UTC+02:00',
+                'Africa/Lagos': 'UTC+01:00'
                 // Add more as needed
             };
             
@@ -1494,6 +1581,9 @@
                 <div style="font-weight: 600; margin-bottom: 5px;">📍 Timezone Detected from GPS</div>
                 <div style="font-size: 14px;">${ianaTimezone}</div>
                 <div style="font-size: 14px;">Set to: ${utcOffset}</div>
+                <div style="font-size: 10px; margin-top: 8px; opacity: 0.8; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 5px;">
+                    Powered by <a href="https://www.geoapify.com/" target="_blank" style="color: white; text-decoration: underline;">Geoapify</a>
+                </div>
             `;
             
             document.body.appendChild(notification);
@@ -1711,6 +1801,12 @@
             manualDateTimeInput.classList.add('hidden');
             manualDate.value = '';
             manualTime.value = '';
+            
+            // Reset GPS display
+            const gpsDisplay = document.getElementById('gpsDisplay');
+            if (gpsDisplay) {
+                gpsDisplay.classList.add('hidden');
+            }
             
             // Reset EXIF toggle
             exifData.classList.remove('show');

@@ -1205,8 +1205,7 @@
                     const file = new File([blob], filename, { type: blob.type });
                     if (navigator.canShare({ files: [file] })) {
                         await navigator.share({
-                            files: [file],
-                            title: 'Save file'
+                            files: [file]
                         });
                         return;
                     }

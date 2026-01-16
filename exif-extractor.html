@@ -1034,6 +1034,9 @@
             console.log('File age (ms):', fileAge);
             console.log('Likely from camera:', isFromCamera);
             
+            showDebugInfo(`📸 Photo uploaded: ${file.name}`);
+            showDebugInfo(`File age: ${(fileAge / 1000).toFixed(1)}s - ${isFromCamera ? 'From camera' : 'From files'}`);
+            
             filenameDisplay.textContent = currentFilename;
             
             const reader = new FileReader();
@@ -1059,6 +1062,9 @@
                         console.log('Number of EXIF tags:', Object.keys(allTags).length);
                         currentImageData = allTags;
                         displayEXIF(allTags);
+                        
+                        // Extract and display GPS data immediately, and fetch timezone if available
+                        displayGPSAndFetchTimezone();
                         
                         // Check if we have datetime in EXIF
                         const hasDateTime = allTags.DateTime || 
@@ -1447,7 +1453,13 @@
                 console.log('extractGPSData: GPS Version ID:', gpsData.gpsVersionID);
             }
             
-            // If we have valid GPS coordinates, fetch timezone
+            return gpsData;
+        }
+        
+        function displayGPSAndFetchTimezone() {
+            const gpsData = extractGPSData();
+            
+            // If we have valid GPS coordinates, display and fetch timezone
             if (gpsData.latitude !== null && gpsData.longitude !== null) {
                 // Adjust for hemisphere
                 const lat = gpsData.latitudeRef === 'S' ? -gpsData.latitude : gpsData.latitude;
@@ -1477,8 +1489,6 @@
                 }
                 showDebugInfo('No GPS coordinates found in EXIF data');
             }
-            
-            return gpsData;
         }
         
         async function fetchTimezoneFromCoordinates(lat, lon) {
@@ -2151,6 +2161,12 @@
             const gpsDisplay = document.getElementById('gpsDisplay');
             if (gpsDisplay) {
                 gpsDisplay.classList.add('hidden');
+            }
+            
+            // Clear debug panel
+            const debugPanel = document.getElementById('debugPanel');
+            if (debugPanel) {
+                debugPanel.remove();
             }
             
             // Reset EXIF toggle

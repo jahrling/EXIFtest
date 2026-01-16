@@ -354,3 +354,4 @@ Having issues? Please open an [issue on GitHub](https://github.com/jahrling/wate
 ---
 
 **Made with ❤️ for water meter monitoring**
+**Made with Claude.ai**

@@ -997,13 +997,19 @@
         function getTimezoneOffset(tzString) {
             // Parse timezone string like "UTC-05:00" to minutes
             const match = tzString.match(/UTC([+-])(\d{2}):(\d{2})/);
-            if (!match) return 0;
+            if (!match) {
+                console.log('getTimezoneOffset: Failed to parse timezone string:', tzString);
+                return 0;
+            }
             
             const sign = match[1] === '+' ? 1 : -1;
             const hours = parseInt(match[2]);
             const minutes = parseInt(match[3]);
+            const offset = sign * (hours * 60 + minutes);
             
-            return sign * (hours * 60 + minutes);
+            console.log(`getTimezoneOffset: Parsed ${tzString} -> sign=${sign}, hours=${hours}, minutes=${minutes}, offset=${offset}`);
+            
+            return offset;
         }
 
         function updateTimestampDisplay() {
@@ -1076,21 +1082,64 @@
         }
 
         function getUTCTimestamp() {
-            if (!currentImageData) return null;
+            if (!currentImageData) {
+                console.log('getUTCTimestamp: No EXIF data, using current time');
+                return new Date().toISOString();
+            }
             
             const dateTimeStr = currentImageData.DateTime || 
                                currentImageData.DateTimeOriginal || 
                                currentImageData.DateTimeDigitized;
             
-            if (!dateTimeStr) return null;
+            if (!dateTimeStr) {
+                console.log('getUTCTimestamp: No datetime in EXIF, using current time');
+                return new Date().toISOString();
+            }
+            
+            console.log('getUTCTimestamp: EXIF datetime string:', dateTimeStr);
             
             const localDateTime = parseEXIFDateTime(dateTimeStr);
-            if (!localDateTime) return null;
+            if (!localDateTime) {
+                console.log('getUTCTimestamp: Failed to parse datetime');
+                return new Date().toISOString();
+            }
             
-            const tzOffset = getTimezoneOffset(timezone.value);
+            console.log('getUTCTimestamp: Parsed local datetime (as UTC):', localDateTime.toISOString());
+            
+            // Get timezone offset in minutes
+            const selectedTz = timezone.value;
+            const tzOffset = getTimezoneOffset(selectedTz);
+            
+            console.log('getUTCTimestamp: Selected timezone:', selectedTz);
+            console.log('getUTCTimestamp: Timezone offset (minutes):', tzOffset);
+            
+            // Convert to UTC
+            // localDateTime is stored as UTC milliseconds but represents local time
+            // We need to subtract the offset to get actual UTC
+            // For UTC-06:00, offset is -360, so we subtract -360 (i.e., add 360 minutes = 6 hours)
             const utcDateTime = new Date(localDateTime.getTime() - (tzOffset * 60000));
             
+            console.log('getUTCTimestamp: Calculated UTC time:', utcDateTime.toISOString());
+            
             return utcDateTime.toISOString();
+        }
+        
+        function getOriginalDateTime() {
+            if (!currentImageData) return new Date().toISOString();
+            
+            const dateTimeStr = currentImageData.DateTime || 
+                               currentImageData.DateTimeOriginal || 
+                               currentImageData.DateTimeDigitized;
+            
+            if (!dateTimeStr) return new Date().toISOString();
+            
+            const localDateTime = parseEXIFDateTime(dateTimeStr);
+            if (!localDateTime) return new Date().toISOString();
+            
+            console.log('getOriginalDateTime: Returning original time:', localDateTime.toISOString());
+            
+            // Return the original datetime as ISO string (representing local time in the original timezone)
+            return localDateTime.toISOString();
         }
 
         let pendingImageSave = null;
@@ -1137,6 +1186,9 @@
             }
 
             // Create JSON data
+            console.log('=== SAVING JSON ===');
+            console.log('Selected timezone from dropdown:', timezone.value);
+            
             const jsonData = {
                 filename: currentFilename,
                 orgId: orgId,
@@ -1146,8 +1198,11 @@
                 meterReadings: meterReadings,
                 OffsetTimeOriginal: timezone.value,
                 timestamp_utc: getUTCTimestamp(),
-                DateTimeOriginal: new Date().toISOString()
+                DateTimeOriginal: getOriginalDateTime()
             };
+            
+            console.log('Final JSON data:', jsonData);
+            console.log('=== END SAVING JSON ===');
 
             const jsonString = JSON.stringify(jsonData, null, 2);
             const jsonFilename = currentFilename.replace(/\.[^/.]+$/, '') + '.json';

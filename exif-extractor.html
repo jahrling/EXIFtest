@@ -265,6 +265,8 @@
         
         input[type="text"],
         input[type="number"],
+        input[type="date"],
+        input[type="time"],
         select {
             width: 100%;
             padding: 10px;
@@ -277,6 +279,8 @@
         @media (max-width: 768px) {
             input[type="text"],
             input[type="number"],
+            input[type="date"],
+            input[type="time"],
             select {
                 padding: 14px;
                 font-size: 16px;
@@ -285,6 +289,8 @@
         
         input[type="text"]:focus,
         input[type="number"]:focus,
+        input[type="date"]:focus,
+        input[type="time"]:focus,
         select:focus {
             outline: none;
             border-color: #667eea;
@@ -477,7 +483,7 @@
 <body>
     <div class="container">
         <h1>💧 Water Meter Photo Logger</h1>
-        <p class="subtitle">Upload a water meter photo and record reading data</p>
+        <p class="subtitle">Upload a water meter photo and record reading data. Browser camera uses capture time; older photos without EXIF require manual entry.</p>
         
         <div class="upload-area" id="uploadArea">
             <div class="upload-icon">📁</div>
@@ -592,6 +598,18 @@
                     <div><span class="timestamp-label">Original Time:</span> <span id="originalTime"></span></div>
                     <div><span class="timestamp-label">UTC Time:</span> <span id="utcTime"></span></div>
                 </div>
+                
+                <div id="manualDateTimeInput" class="timestamp-display hidden">
+                    <div style="color: #d97706; font-weight: 600; margin-bottom: 10px;">⚠️ No timestamp found in photo. Please enter the date and time when this photo was taken:</div>
+                    <div class="form-group">
+                        <label for="manualDate">Date</label>
+                        <input type="date" id="manualDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="manualTime">Time</label>
+                        <input type="time" id="manualTime" step="1" required>
+                    </div>
+                </div>
             </div>
             
             <div class="exif-section">
@@ -617,6 +635,7 @@
         let currentImageData = null;
         let currentImageFile = null;
         let currentFilename = null;
+        let photoCaptureTime = null; // Timestamp when photo was uploaded/captured
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -631,6 +650,9 @@
         const readingsContainer = document.getElementById('readingsContainer');
         const timezone = document.getElementById('timezone');
         const timestampDisplay = document.getElementById('timestampDisplay');
+        const manualDateTimeInput = document.getElementById('manualDateTimeInput');
+        const manualDate = document.getElementById('manualDate');
+        const manualTime = document.getElementById('manualTime');
         const exifToggle = document.getElementById('exifToggle');
         const exifToggleIcon = document.getElementById('exifToggleIcon');
         const exifData = document.getElementById('exifData');
@@ -679,7 +701,12 @@
         });
 
         // Timezone change
-        timezone.addEventListener('change', updateTimestampDisplay);
+        timezone.addEventListener('change', () => {
+            // Determine if we're using camera time by checking if manual input is hidden
+            const isFromCamera = manualDateTimeInput.classList.contains('hidden') && 
+                                !timestampDisplay.classList.contains('hidden');
+            updateTimestampDisplay(isFromCamera);
+        });
         
         // EXIF toggle
         exifToggle.addEventListener('click', () => {
@@ -899,6 +926,17 @@
 
             currentImageFile = file;
             currentFilename = file.name;
+            photoCaptureTime = new Date(); // Capture current time
+            
+            // Check if file is very recent (likely from camera)
+            // If modified within last 10 seconds, it's probably from camera
+            const fileAge = Date.now() - file.lastModified;
+            const isFromCamera = fileAge < 10000; // 10 seconds
+            
+            console.log('File last modified:', new Date(file.lastModified));
+            console.log('File age (ms):', fileAge);
+            console.log('Likely from camera:', isFromCamera);
+            
             filenameDisplay.textContent = currentFilename;
             
             const reader = new FileReader();
@@ -906,13 +944,13 @@
                 imagePreview.src = e.target.result;
                 uploadArea.classList.add('hidden');
                 previewSection.classList.add('active');
-                extractEXIF(e.target.result);
+                extractEXIF(e.target.result, isFromCamera);
             };
             reader.readAsDataURL(file);
         }
 
-        function extractEXIF(imageDataUrl) {
-            console.log('Starting EXIF extraction');
+        function extractEXIF(imageDataUrl, isFromCamera) {
+            console.log('Starting EXIF extraction, isFromCamera:', isFromCamera);
             const img = new Image();
             img.onload = function() {
                 console.log('Image loaded for EXIF extraction');
@@ -924,7 +962,37 @@
                         console.log('Number of EXIF tags:', Object.keys(allTags).length);
                         currentImageData = allTags;
                         displayEXIF(allTags);
-                        updateTimestampDisplay();
+                        
+                        // Check if we have datetime in EXIF
+                        const hasDateTime = allTags.DateTime || 
+                                          allTags.DateTimeOriginal || 
+                                          allTags.DateTimeDigitized;
+                        
+                        if (hasDateTime) {
+                            // Has EXIF datetime - use it
+                            console.log('Has EXIF datetime');
+                            manualDateTimeInput.classList.add('hidden');
+                            updateTimestampDisplay(isFromCamera);
+                        } else if (isFromCamera) {
+                            // From camera, no EXIF - use capture time
+                            console.log('From camera, no EXIF - using capture time');
+                            manualDateTimeInput.classList.add('hidden');
+                            updateTimestampDisplay(isFromCamera);
+                        } else {
+                            // From files, no EXIF - ask user
+                            console.log('From files, no EXIF - asking user for datetime');
+                            timestampDisplay.classList.add('hidden');
+                            manualDateTimeInput.classList.remove('hidden');
+                            
+                            // Set default values to today
+                            const now = new Date();
+                            manualDate.value = now.toISOString().split('T')[0];
+                            manualTime.value = now.toTimeString().split(' ')[0];
+                            
+                            // Update display when user changes values
+                            manualDate.addEventListener('change', () => updateTimestampDisplay(isFromCamera));
+                            manualTime.addEventListener('change', () => updateTimestampDisplay(isFromCamera));
+                        }
                     });
                 } catch (error) {
                     console.error('Error extracting EXIF:', error);
@@ -1012,30 +1080,66 @@
             return offset;
         }
 
-        function updateTimestampDisplay() {
-            if (!currentImageData) {
-                console.log('No EXIF data available');
-                timestampDisplay.classList.add('hidden');
-                return;
-            }
-            
+        function updateTimestampDisplay(isFromCamera) {
             // Try to get DateTime from EXIF
-            const dateTimeStr = currentImageData.DateTime || 
-                               currentImageData.DateTimeOriginal || 
-                               currentImageData.DateTimeDigitized;
+            const dateTimeStr = currentImageData ? (
+                currentImageData.DateTime || 
+                currentImageData.DateTimeOriginal || 
+                currentImageData.DateTimeDigitized
+            ) : null;
             
             console.log('DateTime from EXIF:', dateTimeStr);
-            console.log('All EXIF data:', currentImageData);
             
-            if (!dateTimeStr) {
-                console.log('No timestamp found in EXIF');
-                timestampDisplay.classList.add('hidden');
-                return;
+            let localDateTime;
+            let timeSource = '';
+            
+            if (dateTimeStr) {
+                // Use EXIF datetime
+                localDateTime = parseEXIFDateTime(dateTimeStr);
+                timeSource = '';
+                console.log('Using EXIF datetime');
+            } else if (isFromCamera) {
+                // From camera, use capture time
+                console.log('Using capture time (from camera)');
+                if (!photoCaptureTime) {
+                    timestampDisplay.classList.add('hidden');
+                    return;
+                }
+                localDateTime = new Date(Date.UTC(
+                    photoCaptureTime.getFullYear(),
+                    photoCaptureTime.getMonth(),
+                    photoCaptureTime.getDate(),
+                    photoCaptureTime.getHours(),
+                    photoCaptureTime.getMinutes(),
+                    photoCaptureTime.getSeconds()
+                ));
+                timeSource = ' [Capture Time]';
+            } else {
+                // From files, use manual input
+                console.log('Using manual datetime input');
+                if (!manualDate.value || !manualTime.value) {
+                    timestampDisplay.classList.add('hidden');
+                    return;
+                }
+                
+                const dateStr = manualDate.value; // YYYY-MM-DD
+                const timeStr = manualTime.value; // HH:MM:SS or HH:MM
+                const dateParts = dateStr.split('-');
+                const timeParts = timeStr.split(':');
+                
+                localDateTime = new Date(Date.UTC(
+                    parseInt(dateParts[0]),
+                    parseInt(dateParts[1]) - 1,
+                    parseInt(dateParts[2]),
+                    parseInt(timeParts[0]),
+                    parseInt(timeParts[1]),
+                    parseInt(timeParts[2] || 0)
+                ));
+                timeSource = ' [Manual Entry]';
             }
             
-            const localDateTime = parseEXIFDateTime(dateTimeStr);
-            if (!localDateTime) {
-                console.log('Failed to parse EXIF datetime:', dateTimeStr);
+            if (!localDateTime || isNaN(localDateTime.getTime())) {
+                console.log('Failed to get valid datetime');
                 timestampDisplay.classList.add('hidden');
                 return;
             }
@@ -1048,8 +1152,8 @@
             // Convert to UTC
             const utcDateTime = new Date(localDateTime.getTime() - (tzOffset * 60000));
             
-            // Format original time (don't convert to ISO, keep as local datetime string)
-            const originalTimeStr = formatLocalDateTime(localDateTime) + ' (' + timezone.value + ')';
+            // Format original time
+            const originalTimeStr = formatLocalDateTime(localDateTime) + ' (' + timezone.value + ')' + timeSource;
             
             console.log('Original time:', originalTimeStr);
             console.log('UTC time:', utcDateTime.toISOString());
@@ -1082,24 +1186,52 @@
         }
 
         function getUTCTimestamp() {
-            if (!currentImageData) {
-                console.log('getUTCTimestamp: No EXIF data, using current time');
+            // Try to get DateTime from EXIF
+            const dateTimeStr = currentImageData ? (
+                currentImageData.DateTime || 
+                currentImageData.DateTimeOriginal || 
+                currentImageData.DateTimeDigitized
+            ) : null;
+            
+            let localDateTime;
+            
+            if (dateTimeStr) {
+                // Use EXIF datetime
+                console.log('getUTCTimestamp: Using EXIF datetime:', dateTimeStr);
+                localDateTime = parseEXIFDateTime(dateTimeStr);
+            } else if (manualDate.value && manualTime.value) {
+                // Use manual input
+                console.log('getUTCTimestamp: Using manual input');
+                const dateStr = manualDate.value;
+                const timeStr = manualTime.value;
+                const dateParts = dateStr.split('-');
+                const timeParts = timeStr.split(':');
+                
+                localDateTime = new Date(Date.UTC(
+                    parseInt(dateParts[0]),
+                    parseInt(dateParts[1]) - 1,
+                    parseInt(dateParts[2]),
+                    parseInt(timeParts[0]),
+                    parseInt(timeParts[1]),
+                    parseInt(timeParts[2] || 0)
+                ));
+            } else if (photoCaptureTime) {
+                // Use capture time
+                console.log('getUTCTimestamp: Using capture time');
+                localDateTime = new Date(Date.UTC(
+                    photoCaptureTime.getFullYear(),
+                    photoCaptureTime.getMonth(),
+                    photoCaptureTime.getDate(),
+                    photoCaptureTime.getHours(),
+                    photoCaptureTime.getMinutes(),
+                    photoCaptureTime.getSeconds()
+                ));
+            } else {
+                console.log('getUTCTimestamp: No datetime available, using current time');
                 return new Date().toISOString();
             }
             
-            const dateTimeStr = currentImageData.DateTime || 
-                               currentImageData.DateTimeOriginal || 
-                               currentImageData.DateTimeDigitized;
-            
-            if (!dateTimeStr) {
-                console.log('getUTCTimestamp: No datetime in EXIF, using current time');
-                return new Date().toISOString();
-            }
-            
-            console.log('getUTCTimestamp: EXIF datetime string:', dateTimeStr);
-            
-            const localDateTime = parseEXIFDateTime(dateTimeStr);
-            if (!localDateTime) {
+            if (!localDateTime || isNaN(localDateTime.getTime())) {
                 console.log('getUTCTimestamp: Failed to parse datetime');
                 return new Date().toISOString();
             }
@@ -1114,9 +1246,6 @@
             console.log('getUTCTimestamp: Timezone offset (minutes):', tzOffset);
             
             // Convert to UTC
-            // localDateTime is stored as UTC milliseconds but represents local time
-            // We need to subtract the offset to get actual UTC
-            // For UTC-06:00, offset is -360, so we subtract -360 (i.e., add 360 minutes = 6 hours)
             const utcDateTime = new Date(localDateTime.getTime() - (tzOffset * 60000));
             
             console.log('getUTCTimestamp: Calculated UTC time:', utcDateTime.toISOString());
@@ -1125,21 +1254,125 @@
         }
         
         function getOriginalDateTime() {
-            if (!currentImageData) return new Date().toISOString();
+            // Try to get DateTime from EXIF
+            const dateTimeStr = currentImageData ? (
+                currentImageData.DateTime || 
+                currentImageData.DateTimeOriginal || 
+                currentImageData.DateTimeDigitized
+            ) : null;
             
-            const dateTimeStr = currentImageData.DateTime || 
-                               currentImageData.DateTimeOriginal || 
-                               currentImageData.DateTimeDigitized;
+            let localDateTime;
             
-            if (!dateTimeStr) return new Date().toISOString();
+            if (dateTimeStr) {
+                // Use EXIF datetime
+                console.log('getOriginalDateTime: Using EXIF datetime:', dateTimeStr);
+                localDateTime = parseEXIFDateTime(dateTimeStr);
+            } else if (manualDate.value && manualTime.value) {
+                // Use manual input
+                console.log('getOriginalDateTime: Using manual input');
+                const dateStr = manualDate.value;
+                const timeStr = manualTime.value;
+                const dateParts = dateStr.split('-');
+                const timeParts = timeStr.split(':');
+                
+                localDateTime = new Date(Date.UTC(
+                    parseInt(dateParts[0]),
+                    parseInt(dateParts[1]) - 1,
+                    parseInt(dateParts[2]),
+                    parseInt(timeParts[0]),
+                    parseInt(timeParts[1]),
+                    parseInt(timeParts[2] || 0)
+                ));
+            } else if (photoCaptureTime) {
+                // Use capture time
+                console.log('getOriginalDateTime: Using capture time');
+                localDateTime = new Date(Date.UTC(
+                    photoCaptureTime.getFullYear(),
+                    photoCaptureTime.getMonth(),
+                    photoCaptureTime.getDate(),
+                    photoCaptureTime.getHours(),
+                    photoCaptureTime.getMinutes(),
+                    photoCaptureTime.getSeconds()
+                ));
+            } else {
+                console.log('getOriginalDateTime: No datetime available, using current time');
+                return new Date().toISOString();
+            }
             
-            const localDateTime = parseEXIFDateTime(dateTimeStr);
-            if (!localDateTime) return new Date().toISOString();
+            if (!localDateTime || isNaN(localDateTime.getTime())) return new Date().toISOString();
             
             console.log('getOriginalDateTime: Returning original time:', localDateTime.toISOString());
             
-            // Return the original datetime as ISO string (representing local time in the original timezone)
             return localDateTime.toISOString();
+        }
+        
+        function extractGPSData() {
+            const gpsData = {
+                latitude: null,
+                latitudeRef: null,
+                longitude: null,
+                longitudeRef: null,
+                gpsVersionID: null
+            };
+            
+            if (!currentImageData) {
+                console.log('extractGPSData: No EXIF data available');
+                return gpsData;
+            }
+            
+            // Extract GPS Latitude
+            if (currentImageData.GPSLatitude) {
+                gpsData.latitude = convertGPSCoordinate(currentImageData.GPSLatitude);
+                console.log('extractGPSData: Latitude:', gpsData.latitude);
+            }
+            
+            // Extract GPS Latitude Reference (N or S)
+            if (currentImageData.GPSLatitudeRef) {
+                gpsData.latitudeRef = currentImageData.GPSLatitudeRef;
+                console.log('extractGPSData: Latitude Ref:', gpsData.latitudeRef);
+            }
+            
+            // Extract GPS Longitude
+            if (currentImageData.GPSLongitude) {
+                gpsData.longitude = convertGPSCoordinate(currentImageData.GPSLongitude);
+                console.log('extractGPSData: Longitude:', gpsData.longitude);
+            }
+            
+            // Extract GPS Longitude Reference (E or W)
+            if (currentImageData.GPSLongitudeRef) {
+                gpsData.longitudeRef = currentImageData.GPSLongitudeRef;
+                console.log('extractGPSData: Longitude Ref:', gpsData.longitudeRef);
+            }
+            
+            // Extract GPS Version ID
+            if (currentImageData.GPSVersionID) {
+                gpsData.gpsVersionID = currentImageData.GPSVersionID;
+                console.log('extractGPSData: GPS Version ID:', gpsData.gpsVersionID);
+            }
+            
+            return gpsData;
+        }
+        
+        function convertGPSCoordinate(coord) {
+            // GPS coordinates in EXIF are stored as [degrees, minutes, seconds]
+            // Each value can be a fraction
+            if (!coord || !Array.isArray(coord) || coord.length !== 3) {
+                return null;
+            }
+            
+            try {
+                const degrees = coord[0];
+                const minutes = coord[1];
+                const seconds = coord[2];
+                
+                // Convert to decimal degrees
+                const decimal = degrees + (minutes / 60) + (seconds / 3600);
+                
+                return decimal;
+            } catch (error) {
+                console.error('Error converting GPS coordinate:', error);
+                return null;
+            }
         }
 
         let pendingImageSave = null;
@@ -1172,6 +1405,14 @@
                 showStatus('Please fill in all required fields', 'error');
                 return;
             }
+            
+            // Check if manual datetime is required and filled
+            if (!manualDateTimeInput.classList.contains('hidden')) {
+                if (!manualDate.value || !manualTime.value) {
+                    showStatus('Please enter the date and time when the photo was taken', 'error');
+                    return;
+                }
+            }
 
             // Build meter readings object
             const meterReadings = {
@@ -1185,6 +1426,9 @@
                 meterReadings.reading2 = parseFloat(reading2Value);
             }
 
+            // Extract GPS data if available
+            const gpsData = extractGPSData();
+            
             // Create JSON data
             console.log('=== SAVING JSON ===');
             console.log('Selected timezone from dropdown:', timezone.value);
@@ -1198,7 +1442,14 @@
                 meterReadings: meterReadings,
                 OffsetTimeOriginal: timezone.value,
                 timestamp_utc: getUTCTimestamp(),
-                DateTimeOriginal: getOriginalDateTime()
+                DateTimeOriginal: getOriginalDateTime(),
+                gps: {
+                    latitude: gpsData.latitude,
+                    latitudeRef: gpsData.latitudeRef,
+                    longitude: gpsData.longitude,
+                    longitudeRef: gpsData.longitudeRef,
+                    gpsVersionID: gpsData.gpsVersionID
+                }
             };
             
             console.log('Final JSON data:', jsonData);
@@ -1297,6 +1548,7 @@
             currentImageData = null;
             currentImageFile = null;
             currentFilename = null;
+            photoCaptureTime = null;
             status.style.display = 'none';
             document.getElementById('orgId').value = '';
             document.getElementById('deviceId').value = '';
@@ -1304,6 +1556,9 @@
             document.getElementById('reading1').value = '';
             document.getElementById('reading2').value = '';
             timestampDisplay.classList.add('hidden');
+            manualDateTimeInput.classList.add('hidden');
+            manualDate.value = '';
+            manualTime.value = '';
             
             // Reset EXIF toggle
             exifData.classList.remove('show');

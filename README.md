@@ -61,7 +61,7 @@ A mobile-first web application for capturing and logging water meter readings wi
 
 1. **Fork or clone this repository**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/water-meter-logger.git
+   git clone https://github.com/jahrling/water-meter-logger.git
    ```
 
 2. **Enable GitHub Pages**
@@ -71,7 +71,7 @@ A mobile-first web application for capturing and logging water meter readings wi
    - Save
 
 3. **Access your app**
-   - URL: `https://YOUR_USERNAME.github.io/water-meter-logger/exif-extractor.html`
+   - URL: `https://jahrling.github.io/water-meter-logger/exif-extractor.html`
    - Bookmark it or add to home screen on mobile
 
 ### Basic Usage
@@ -110,7 +110,7 @@ To enable the "Save to SharePoint" button:
      Name: Water Meter Photo Logger
      Supported account types: Accounts in this organizational directory only
      Redirect URI: Single-page application (SPA)
-     URL: https://YOUR_USERNAME.github.io/water-meter-logger/
+     URL: https://jahrling.github.io/water-meter-logger/
      ```
 
 2. **Configure API Permissions**
@@ -336,7 +336,7 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## 📧 Support
 
-Having issues? Please open an [issue on GitHub](https://github.com/YOUR_USERNAME/water-meter-logger/issues).
+Having issues? Please open an [issue on GitHub](https://github.com/jahrling/water-meter-logger/issues).
 
 ---
 

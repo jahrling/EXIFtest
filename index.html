@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meter OCR — Swipe to Read</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0f1e">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;600;700&display=swap');
+
+```
+    :root {
+        --bg-deep: #0a0f1e;
+        --bg-card: #131a2e;
+        --bg-surface: #1a2340;
+        --accent: #00e4a0;
+        --accent-dim: rgba(0, 228, 160, 0.15);
+        --accent-glow: rgba(0, 228, 160, 0.4);
+        --warn: #ff6b4a;
+        --warn-dim: rgba(255, 107, 74, 0.15);
+        --text-primary: #e8ecf4;
+        --text-secondary: #7a8ba8;
+        --text-muted: #4a5a75;
+        --stroke-color: #00e4a0;
+        --stroke-width: 36;
+        --radius-sm: 8px;
+        --radius-md: 14px;
+        --radius-lg: 20px;
+    }
+
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    body {
+        font-family: 'Outfit', sans-serif;
+        background: var(--bg-deep);
+        color: var(--text-primary);
+        touch-action: none;
+        overscroll-behavior: none;
+    }
+
+    /* ─── APP SHELL ─── */
+    .app {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+        max-height: 100dvh;
+    }
+
+    /* ─── HEADER ─── */
+    .header {
+        flex-shrink: 0;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--bg-card);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        z-index: 10;
+    }
+
+    .header-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: var(--accent);
+    }
+
+    .header-subtitle {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 1px;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .icon-btn {
+        width: 38px;
+        height: 38px;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(255,255,255,0.08);
+        background: var(--bg-surface);
+        color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 16px;
+    }
+
+    .icon-btn:active {
+        transform: scale(0.92);
+        background: var(--accent-dim);
+        color: var(--accent);
+        border-color: var(--accent);
+    }
+
+    .icon-btn.danger:active {
+        background: var(--warn-dim);
+        color: var(--warn);
+        border-color: var(--warn);
+    }
+
+    /* ─── CANVAS AREA ─── */
+    .canvas-area {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        background: #050a15;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .canvas-area canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    #imageCanvas {
+        z-index: 1;
+    }
+
+    #overlayCanvas {
+        z-index: 2;
+    }
+
+    /* ─── UPLOAD STATE ─── */
+    .upload-prompt {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 40px;
+        cursor: pointer;
+    }
+
+    .upload-prompt.hidden {
+        display: none;
+    }
+
+    .upload-ring {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        border: 2px dashed var(--text-muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        color: var(--text-muted);
+        transition: all 0.3s;
+    }
+
+    .upload-prompt:active .upload-ring {
+        border-color: var(--accent);
+        color: var(--accent);
+        transform: scale(0.95);
+    }
+
+    .upload-label {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-align: center;
+    }
+
+    .upload-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    #fileInput {
+        display: none;
+    }
+
+    /* ─── INSTRUCTIONS OVERLAY ─── */
+    .instructions {
+        position: absolute;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 6;
+        background: rgba(10, 15, 30, 0.85);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        padding: 10px 18px;
+        border-radius: 24px;
+        border: 1px solid rgba(255,255,255,0.08);
+        font-size: 13px;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        pointer-events: none;
+        transition: opacity 0.4s;
+    }
+
+    .instructions.hidden {
+        opacity: 0;
+    }
+
+    .instructions .accent {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    /* ─── STATUS BAR ─── */
+    .status-bar {
+        flex-shrink: 0;
+        padding: 8px 16px;
+        background: var(--bg-card);
+        border-top: 1px solid rgba(255,255,255,0.06);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 42px;
+    }
+
+    .status-text {
+        font-size: 12px;
+        color: var(--text-muted);
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .status-text .val {
+        color: var(--accent);
+    }
+
+    /* ─── BOTTOM PANEL (Preview + Result) ─── */
+    .bottom-panel {
+        flex-shrink: 0;
+        background: var(--bg-card);
+        border-top: 1px solid rgba(255,255,255,0.06);
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .bottom-panel.open {
+        max-height: 320px;
+    }
+
+    .panel-inner {
+        padding: 14px 16px 20px;
+    }
+
+    .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+
+    .panel-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .panel-actions {
+        display: flex;
+        gap: 6px;
+    }
+
+    .pill-btn {
+        padding: 6px 14px;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.1);
+        background: var(--bg-surface);
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-family: 'Outfit', sans-serif;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .pill-btn:active {
+        transform: scale(0.95);
+    }
+
+    .pill-btn.primary {
+        background: var(--accent);
+        color: var(--bg-deep);
+        border-color: var(--accent);
+    }
+
+    .pill-btn.primary:active {
+        background: #00c98e;
+    }
+
+    /* ─── CROP PREVIEW ─── */
+    .crop-preview-container {
+        background: var(--bg-surface);
+        border-radius: var(--radius-md);
+        padding: 10px;
+        border: 1px solid rgba(255,255,255,0.06);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 60px;
+        max-height: 140px;
+        overflow: hidden;
+    }
+
+    #cropPreview {
+        max-width: 100%;
+        max-height: 120px;
+        border-radius: var(--radius-sm);
+        image-rendering: auto;
+    }
+
+    .crop-placeholder {
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+
+    /* ─── OCR RESULT ─── */
+    .ocr-section {
+        margin-top: 12px;
+        display: none;
+    }
+
+    .ocr-section.visible {
+        display: block;
+    }
+
+    .ocr-result-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .ocr-input {
+        flex: 1;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        padding: 10px 14px;
+        background: var(--bg-deep);
+        border: 2px solid rgba(255,255,255,0.08);
+        border-radius: var(--radius-md);
+        color: var(--text-primary);
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .ocr-input:focus {
+        border-color: var(--accent);
+    }
+
+    .ocr-confidence {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--text-muted);
+        padding: 4px 10px;
+        background: var(--bg-surface);
+        border-radius: 12px;
+        white-space: nowrap;
+    }
+
+    .ocr-confidence.high {
+        color: var(--accent);
+        background: var(--accent-dim);
+    }
+
+    .ocr-confidence.low {
+        color: var(--warn);
+        background: var(--warn-dim);
+    }
+
+    .ocr-loading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px;
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+
+    .spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--text-muted);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* ─── SWIPE HINT ANIMATION ─── */
+    .swipe-hint {
+        position: absolute;
+        z-index: 4;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.5s;
+    }
+
+    .swipe-hint.show {
+        opacity: 1;
+    }
+
+    .swipe-dot {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 20px var(--accent-glow);
+        position: absolute;
+    }
+
+    /* ─── UTILITY ─── */
+    .hidden { display: none !important; }
+
+    /* Desktop adjustments */
+    @media (min-width: 600px) {
+        .app {
+            max-width: 430px;
+            margin: 0 auto;
+            border-left: 1px solid rgba(255,255,255,0.05);
+            border-right: 1px solid rgba(255,255,255,0.05);
+        }
+    }
+
+    /* Loading overlay for Tesseract */
+    .loading-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        background: rgba(10, 15, 30, 0.92);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+    }
+
+    .loading-overlay.visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .loading-text {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .loading-bar {
+        width: 180px;
+        height: 3px;
+        background: var(--bg-surface);
+        border-radius: 2px;
+        overflow: hidden;
+    }
+
+    .loading-bar-fill {
+        height: 100%;
+        background: var(--accent);
+        border-radius: 2px;
+        width: 0%;
+        transition: width 0.3s;
+    }
+</style>
+```
+
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <div class="header-title">METER OCR</div>
+                <div class="header-subtitle">Swipe across numbers to read</div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" id="undoBtn" title="Undo swipe">↩</button>
+                <button class="icon-btn danger" id="clearBtn" title="Clear all">✕</button>
+                <button class="icon-btn" id="newPhotoBtn" title="New photo">📷</button>
+            </div>
+        </header>
+
+```
+    <!-- Canvas Area -->
+    <div class="canvas-area" id="canvasArea">
+        <canvas id="imageCanvas"></canvas>
+        <canvas id="overlayCanvas"></canvas>
+
+        <!-- Upload prompt -->
+        <div class="upload-prompt" id="uploadPrompt">
+            <div class="upload-ring">📷</div>
+            <div class="upload-label">Tap to upload meter photo</div>
+            <div class="upload-hint">JPG, PNG — use camera for best results</div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="instructions hidden" id="instructions">
+            <span class="accent">Swipe</span> across the meter numbers
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar" id="statusBar">
+        <span class="status-text" id="statusText">No image loaded</span>
+    </div>
+
+    <!-- Bottom Panel -->
+    <div class="bottom-panel" id="bottomPanel">
+        <div class="panel-inner">
+            <div class="panel-header">
+                <span class="panel-title">Cropped Region</span>
+                <div class="panel-actions">
+                    <button class="pill-btn" id="redoSwipeBtn">Redo</button>
+                    <button class="pill-btn primary" id="runOcrBtn">Read Numbers</button>
+                </div>
+            </div>
+            <div class="crop-preview-container" id="cropPreviewContainer">
+                <canvas id="cropPreview"></canvas>
+            </div>
+            <div class="ocr-section" id="ocrSection">
+                <div class="ocr-loading hidden" id="ocrLoading">
+                    <div class="spinner"></div>
+                    <span>Running OCR…</span>
+                </div>
+                <div class="ocr-result-row hidden" id="ocrResult">
+                    <input type="text" class="ocr-input" id="ocrValue" placeholder="—">
+                    <span class="ocr-confidence" id="ocrConfidence">—</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading overlay for Tesseract init -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner" style="width:28px;height:28px;border-width:3px;"></div>
+        <div class="loading-text" id="loadingText">Initializing OCR engine…</div>
+        <div class="loading-bar">
+            <div class="loading-bar-fill" id="loadingBarFill"></div>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" capture="environment">
+
+<!-- Tesseract.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<script>
+(() => {
+    'use strict';
+
+    // ── Elements ──
+    const canvasArea    = document.getElementById('canvasArea');
+    const imageCanvas   = document.getElementById('imageCanvas');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    const imgCtx        = imageCanvas.getContext('2d');
+    const ovCtx         = overlayCanvas.getContext('2d');
+    const uploadPrompt  = document.getElementById('uploadPrompt');
+    const instructions  = document.getElementById('instructions');
+    const fileInput     = document.getElementById('fileInput');
+    const statusText    = document.getElementById('statusText');
+    const bottomPanel   = document.getElementById('bottomPanel');
+    const cropPreview   = document.getElementById('cropPreview');
+    const cropCtx       = cropPreview.getContext('2d');
+    const ocrSection    = document.getElementById('ocrSection');
+    const ocrLoading    = document.getElementById('ocrLoading');
+    const ocrResult     = document.getElementById('ocrResult');
+    const ocrValue      = document.getElementById('ocrValue');
+    const ocrConfidence = document.getElementById('ocrConfidence');
+    const undoBtn       = document.getElementById('undoBtn');
+    const clearBtn      = document.getElementById('clearBtn');
+    const newPhotoBtn   = document.getElementById('newPhotoBtn');
+    const redoSwipeBtn  = document.getElementById('redoSwipeBtn');
+    const runOcrBtn     = document.getElementById('runOcrBtn');
+    const loadingOverlay= document.getElementById('loadingOverlay');
+    const loadingText   = document.getElementById('loadingText');
+    const loadingBarFill= document.getElementById('loadingBarFill');
+
+    // ── State ──
+    let sourceImage = null;        // original Image object
+    let imgScale    = 1;           // scale factor: displayed / natural
+    let imgOffsetX  = 0;           // image offset within canvas
+    let imgOffsetY  = 0;
+    let displayW    = 0;           // displayed image dimensions
+    let displayH    = 0;
+
+    let swipePath   = [];          // [{x, y}, ...] in canvas coords
+    let isDrawing   = false;
+    let croppedImageData = null;   // base64 of cropped region
+    let tesseractWorker = null;
+
+    const STROKE_RADIUS = 20;      // half-width of swipe band in canvas px
+
+    // ── File Input ──
+    uploadPrompt.addEventListener('click', () => fileInput.click());
+    newPhotoBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', handleFileSelect);
+
+    function handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => loadImage(img);
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+        fileInput.value = '';
+    }
+
+    function loadImage(img) {
+        sourceImage = img;
+        resetState();
+        fitCanvases();
+        drawImage();
+        uploadPrompt.classList.add('hidden');
+        instructions.classList.remove('hidden');
+        statusText.innerHTML = `${img.naturalWidth}×${img.naturalHeight} · <span class="val">ready</span>`;
+
+        // Auto-hide instructions after 3s
+        setTimeout(() => instructions.classList.add('hidden'), 3000);
+    }
+
+    function resetState() {
+        swipePath = [];
+        croppedImageData = null;
+        bottomPanel.classList.remove('open');
+        ocrSection.classList.remove('visible');
+        ocrLoading.classList.add('hidden');
+        ocrResult.classList.add('hidden');
+        clearOverlay();
+    }
+
+    // ── Canvas Sizing ──
+    function fitCanvases() {
+        const rect = canvasArea.getBoundingClientRect();
+        const cw = rect.width;
+        const ch = rect.height;
+
+        imageCanvas.width = overlayCanvas.width = cw;
+        imageCanvas.height = overlayCanvas.height = ch;
+
+        if (!sourceImage) return;
+
+        const natW = sourceImage.naturalWidth;
+        const natH = sourceImage.naturalHeight;
+        const scale = Math.min(cw / natW, ch / natH);
+
+        displayW = natW * scale;
+        displayH = natH * scale;
+        imgScale = scale;
+        imgOffsetX = (cw - displayW) / 2;
+        imgOffsetY = (ch - displayH) / 2;
+    }
+
+    function drawImage() {
+        if (!sourceImage) return;
+        imgCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
+        imgCtx.drawImage(sourceImage, imgOffsetX, imgOffsetY, displayW, displayH);
+    }
+
+    function clearOverlay() {
+        ovCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    }
+
+    window.addEventListener('resize', () => {
+        fitCanvases();
+        drawImage();
+        if (swipePath.length > 1) drawSwipe();
+    });
+
+    // ── Touch / Mouse Drawing ──
+    overlayCanvas.addEventListener('touchstart', onPointerDown, { passive: false });
+    overlayCanvas.addEventListener('touchmove', onPointerMove, { passive: false });
+    overlayCanvas.addEventListener('touchend', onPointerUp);
+    overlayCanvas.addEventListener('touchcancel', onPointerUp);
+    overlayCanvas.addEventListener('mousedown', onPointerDown);
+    overlayCanvas.addEventListener('mousemove', onPointerMove);
+    overlayCanvas.addEventListener('mouseup', onPointerUp);
+    overlayCanvas.addEventListener('mouseleave', onPointerUp);
+
+    function getPos(e) {
+        const rect = overlayCanvas.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return {
+            x: t.clientX - rect.left,
+            y: t.clientY - rect.top
+        };
+    }
+
+    function onPointerDown(e) {
+        if (!sourceImage) return;
+        e.preventDefault();
+        isDrawing = true;
+        swipePath = [];
+        croppedImageData = null;
+        bottomPanel.classList.remove('open');
+        ocrSection.classList.remove('visible');
+        instructions.classList.add('hidden');
+        clearOverlay();
+        const pos = getPos(e);
+        swipePath.push(pos);
+    }
+
+    function onPointerMove(e) {
+        if (!isDrawing) return;
+        e.preventDefault();
+        const pos = getPos(e);
+        swipePath.push(pos);
+        drawSwipe();
+    }
+
+    function onPointerUp(e) {
+        if (!isDrawing) return;
+        isDrawing = false;
+        if (swipePath.length > 3) {
+            drawSwipeFinal();
+            cropRegion();
+        }
+    }
+
+    // ── Swipe Rendering ──
+    function drawSwipe() {
+        clearOverlay();
+        if (swipePath.length < 2) return;
+
+        // Semi-transparent band while drawing
+        ovCtx.save();
+        ovCtx.lineWidth = STROKE_RADIUS * 2;
+        ovCtx.lineCap = 'round';
+        ovCtx.lineJoin = 'round';
+        ovCtx.strokeStyle = 'rgba(0, 228, 160, 0.25)';
+        ovCtx.beginPath();
+        ovCtx.moveTo(swipePath[0].x, swipePath[0].y);
+        for (let i = 1; i < swipePath.length; i++) {
+            ovCtx.lineTo(swipePath[i].x, swipePath[i].y);
+        }
+        ovCtx.stroke();
+
+        // Center line
+        ovCtx.lineWidth = 2;
+        ovCtx.strokeStyle = 'rgba(0, 228, 160, 0.7)';
+        ovCtx.beginPath();
+        ovCtx.moveTo(swipePath[0].x, swipePath[0].y);
+        for (let i = 1; i < swipePath.length; i++) {
+            ovCtx.lineTo(swipePath[i].x, swipePath[i].y);
+        }
+        ovCtx.stroke();
+        ovCtx.restore();
+    }
+
+    function drawSwipeFinal() {
+        clearOverlay();
+        if (swipePath.length < 2) return;
+        const bb = getBoundingBox();
+
+        // Draw filled band
+        ovCtx.save();
+        ovCtx.lineWidth = STROKE_RADIUS * 2;
+        ovCtx.lineCap = 'round';
+        ovCtx.lineJoin = 'round';
+        ovCtx.strokeStyle = 'rgba(0, 228, 160, 0.18)';
+        ovCtx.beginPath();
+        ovCtx.moveTo(swipePath[0].x, swipePath[0].y);
+        for (let i = 1; i < swipePath.length; i++) {
+            ovCtx.lineTo(swipePath[i].x, swipePath[i].y);
+        }
+        ovCtx.stroke();
+
+        // Dashed bounding box
+        ovCtx.setLineDash([6, 4]);
+        ovCtx.lineWidth = 1.5;
+        ovCtx.strokeStyle = 'rgba(0, 228, 160, 0.6)';
+        ovCtx.strokeRect(bb.x, bb.y, bb.w, bb.h);
+
+        // Corner markers
+        ovCtx.setLineDash([]);
+        const cornerLen = 10;
+        ovCtx.lineWidth = 2;
+        ovCtx.strokeStyle = '#00e4a0';
+        // Top-left
+        drawCorner(bb.x, bb.y, cornerLen, 1, 1);
+        // Top-right
+        drawCorner(bb.x + bb.w, bb.y, cornerLen, -1, 1);
+        // Bottom-left
+        drawCorner(bb.x, bb.y + bb.h, cornerLen, 1, -1);
+        // Bottom-right
+        drawCorner(bb.x + bb.w, bb.y + bb.h, cornerLen, -1, -1);
+
+        ovCtx.restore();
+    }
+
+    function drawCorner(x, y, len, dx, dy) {
+        ovCtx.beginPath();
+        ovCtx.moveTo(x, y + len * dy);
+        ovCtx.lineTo(x, y);
+        ovCtx.lineTo(x + len * dx, y);
+        ovCtx.stroke();
+    }
+
+    // ── Bounding Box ──
+    function getBoundingBox() {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of swipePath) {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+        }
+        // Expand by stroke radius
+        minX -= STROKE_RADIUS;
+        minY -= STROKE_RADIUS;
+        maxX += STROKE_RADIUS;
+        maxY += STROKE_RADIUS;
+
+        // Clamp to canvas
+        minX = Math.max(0, minX);
+        minY = Math.max(0, minY);
+        maxX = Math.min(overlayCanvas.width, maxX);
+        maxY = Math.min(overlayCanvas.height, maxY);
+
+        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+
+    // ── Crop Region (from original full-res image) ──
+    function cropRegion() {
+        if (!sourceImage || swipePath.length < 2) return;
+
+        const bb = getBoundingBox();
+
+        // Convert canvas coords to natural image coords
+        const natX = Math.max(0, (bb.x - imgOffsetX) / imgScale);
+        const natY = Math.max(0, (bb.y - imgOffsetY) / imgScale);
+        const natW = Math.min(sourceImage.naturalWidth - natX, bb.w / imgScale);
+        const natH = Math.min(sourceImage.naturalHeight - natY, bb.h / imgScale);
+
+        if (natW < 5 || natH < 5) {
+            statusText.innerHTML = 'Selection too small — <span class="val">try again</span>';
+            return;
+        }
+
+        // Draw crop at 2x for OCR quality
+        const scale = 2;
+        const outW = Math.round(natW * scale);
+        const outH = Math.round(natH * scale);
+
+        cropPreview.width = outW;
+        cropPreview.height = outH;
+
+        // Step 1: Draw cropped region
+        cropCtx.drawImage(
+            sourceImage,
+            natX, natY, natW, natH,
+            0, 0, outW, outH
+        );
+
+        // Step 2: Preprocessing — grayscale + contrast boost + threshold
+        const imageData = cropCtx.getImageData(0, 0, outW, outH);
+        preprocessForOCR(imageData);
+        cropCtx.putImageData(imageData, 0, 0);
+
+        croppedImageData = cropPreview.toDataURL('image/png');
+
+        // Show panel
+        bottomPanel.classList.add('open');
+        statusText.innerHTML = `Crop: ${Math.round(natW)}×${Math.round(natH)}px · <span class="val">2× upscaled</span>`;
+    }
+
+    function preprocessForOCR(imageData) {
+        const d = imageData.data;
+        const len = d.length;
+
+        // Pass 1: convert to grayscale, collect stats
+        const gray = new Uint8Array(len / 4);
+        let sum = 0;
+        for (let i = 0; i < len; i += 4) {
+            const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+            gray[i/4] = g;
+            sum += g;
+        }
+        const mean = sum / gray.length;
+
+        // Pass 2: contrast stretch + Otsu threshold approximation
+        let min = 255, max = 0;
+        for (let i = 0; i < gray.length; i++) {
+            if (gray[i] < min) min = gray[i];
+            if (gray[i] > max) max = gray[i];
+        }
+        const range = max - min || 1;
+
+        // Simple Otsu: use mean as threshold (good enough for digit extraction)
+        const threshold = mean;
+
+        for (let i = 0; i < gray.length; i++) {
+            // Contrast stretch
+            let v = ((gray[i] - min) / range) * 255;
+            // Binarize
+            v = v < threshold ? 0 : 255;
+
+            const idx = i * 4;
+            d[idx] = d[idx+1] = d[idx+2] = v;
+            d[idx+3] = 255;
+        }
+    }
+
+    // ── OCR with Tesseract.js ──
+    async function initTesseract() {
+        if (tesseractWorker) return;
+        loadingOverlay.classList.add('visible');
+        loadingText.textContent = 'Loading OCR engine…';
+        loadingBarFill.style.width = '10%';
+
+        try {
+            tesseractWorker = await Tesseract.createWorker('eng', 1, {
+                logger: (m) => {
+                    if (m.progress !== undefined) {
+                        const pct = Math.round(m.progress * 100);
+                        loadingBarFill.style.width = pct + '%';
+                        if (m.status) {
+                            loadingText.textContent = m.status;
+                        }
+                    }
+                }
+            });
+
+            await tesseractWorker.setParameters({
+                tessedit_char_whitelist: '0123456789.',
+                tessedit_pageseg_mode: '7',  // single text line
+            });
+
+            loadingBarFill.style.width = '100%';
+        } catch(err) {
+            console.error('Tesseract init failed:', err);
+            statusText.innerHTML = '<span style="color:var(--warn)">OCR init failed</span>';
+        }
+        loadingOverlay.classList.remove('visible');
+    }
+
+    async function runOCR() {
+        if (!croppedImageData) return;
+
+        ocrSection.classList.add('visible');
+        ocrLoading.classList.remove('hidden');
+        ocrResult.classList.add('hidden');
+
+        await initTesseract();
+
+        if (!tesseractWorker) {
+            ocrLoading.classList.add('hidden');
+            return;
+        }
+
+        try {
+            const { data } = await tesseractWorker.recognize(croppedImageData);
+            const text = data.text.trim().replace(/\s+/g, '');
+            const conf = data.confidence;
+
+            ocrValue.value = text || '';
+            ocrConfidence.textContent = conf ? `${Math.round(conf)}%` : '—';
+            ocrConfidence.className = 'ocr-confidence ' + (conf >= 70 ? 'high' : 'low');
+
+            ocrLoading.classList.add('hidden');
+            ocrResult.classList.remove('hidden');
+
+            statusText.innerHTML = `OCR result: <span class="val">${text || 'no digits found'}</span>`;
+        } catch(err) {
+            console.error('OCR error:', err);
+            ocrLoading.classList.add('hidden');
+            statusText.innerHTML = '<span style="color:var(--warn)">OCR failed — try again</span>';
+        }
+    }
+
+    // ── Button Handlers ──
+    runOcrBtn.addEventListener('click', runOCR);
+
+    undoBtn.addEventListener('click', () => {
+        swipePath = [];
+        croppedImageData = null;
+        clearOverlay();
+        bottomPanel.classList.remove('open');
+        ocrSection.classList.remove('visible');
+        if (sourceImage) {
+            statusText.innerHTML = `${sourceImage.naturalWidth}×${sourceImage.naturalHeight} · <span class="val">ready</span>`;
+            instructions.classList.remove('hidden');
+            setTimeout(() => instructions.classList.add('hidden'), 2500);
+        }
+    });
+
+    clearBtn.addEventListener('click', () => {
+        sourceImage = null;
+        swipePath = [];
+        croppedImageData = null;
+        imgCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
+        clearOverlay();
+        bottomPanel.classList.remove('open');
+        ocrSection.classList.remove('visible');
+        uploadPrompt.classList.remove('hidden');
+        instructions.classList.add('hidden');
+        statusText.textContent = 'No image loaded';
+    });
+
+    redoSwipeBtn.addEventListener('click', () => {
+        swipePath = [];
+        croppedImageData = null;
+        clearOverlay();
+        bottomPanel.classList.remove('open');
+        ocrSection.classList.remove('visible');
+        instructions.classList.remove('hidden');
+        setTimeout(() => instructions.classList.add('hidden'), 2500);
+        statusText.innerHTML = `${sourceImage.naturalWidth}×${sourceImage.naturalHeight} · <span class="val">ready</span>`;
+    });
+
+    // ── Init ──
+    fitCanvases();
+
+})();
+</script>
+```
+
+</body>
+</html>

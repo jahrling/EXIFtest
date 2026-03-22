@@ -957,17 +957,62 @@
         cropPreview.height = sh;
         cropCtx.drawImage(offscreen, sx, sy, sw, sh, 0, 0, sw, sh);
 
-        // Apply preprocessing: grayscale + contrast
+        // Apply preprocessing: grayscale → local contrast stretch → Otsu binarization
         const imgData = cropCtx.getImageData(0, 0, sw, sh);
         const d = imgData.data;
-        for (let i = 0; i < d.length; i += 4) {
-            // Grayscale
-            const gray = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
-            // Contrast stretch
-            const stretched = Math.min(255, Math.max(0, (gray - 80) * (255 / 175)));
-            // Simple binarization threshold
-            const val = stretched > 128 ? 255 : 0;
-            d[i] = d[i+1] = d[i+2] = val;
+        const totalPixels = sw * sh;
+
+        // Pass 1: convert to grayscale and find local min/max
+        const grayValues = new Uint8Array(totalPixels);
+        let localMin = 255, localMax = 0;
+        for (let i = 0; i < totalPixels; i++) {
+            const gi = i * 4;
+            const gray = Math.round(0.299 * d[gi] + 0.587 * d[gi+1] + 0.114 * d[gi+2]);
+            grayValues[i] = gray;
+            if (gray < localMin) localMin = gray;
+            if (gray > localMax) localMax = gray;
+        }
+
+        // Pass 2: contrast stretch to local range
+        const range = localMax - localMin || 1;
+        for (let i = 0; i < totalPixels; i++) {
+            grayValues[i] = Math.round(((grayValues[i] - localMin) / range) * 255);
+        }
+
+        // Otsu's threshold on the stretched values
+        const histogram = new Int32Array(256);
+        for (let i = 0; i < totalPixels; i++) {
+            histogram[grayValues[i]]++;
+        }
+
+        let sum = 0;
+        for (let t = 0; t < 256; t++) sum += t * histogram[t];
+
+        let sumB = 0, wB = 0, wF = 0;
+        let maxVariance = 0, threshold = 128;
+
+        for (let t = 0; t < 256; t++) {
+            wB += histogram[t];
+            if (wB === 0) continue;
+            wF = totalPixels - wB;
+            if (wF === 0) break;
+
+            sumB += t * histogram[t];
+            const mB = sumB / wB;
+            const mF = (sum - sumB) / wF;
+            const variance = wB * wF * (mB - mF) * (mB - mF);
+
+            if (variance > maxVariance) {
+                maxVariance = variance;
+                threshold = t;
+            }
+        }
+
+        // Pass 3: apply binarization
+        for (let i = 0; i < totalPixels; i++) {
+            const val = grayValues[i] > threshold ? 255 : 0;
+            const gi = i * 4;
+            d[gi] = d[gi+1] = d[gi+2] = val;
         }
         cropCtx.putImageData(imgData, 0, 0);
 

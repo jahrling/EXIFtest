@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meter Reader</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0b1120">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700&family=DM+Mono:wght@400;500&display=swap');
+
+```
+    :root {
+        --bg-deep: #0b1120;
+        --bg-card: #111827;
+        --bg-surface: #1e293b;
+        --bg-hover: #263349;
+        --accent: #34d399;
+        --accent-dim: rgba(52, 211, 153, 0.12);
+        --accent-glow: rgba(52, 211, 153, 0.35);
+        --warn: #f87171;
+        --warn-dim: rgba(248, 113, 113, 0.12);
+        --lock-color: #fbbf24;
+        --lock-dim: rgba(251, 191, 36, 0.12);
+        --text-primary: #f1f5f9;
+        --text-secondary: #94a3b8;
+        --text-muted: #475569;
+        --border: rgba(255,255,255,0.06);
+        --radius: 12px;
+        --stroke-color: rgba(52, 211, 153, 0.45);
+        --stroke-width: 40;
+    }
+
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html, body { height:100%; overflow:hidden; }
+    body {
+        font-family: 'DM Sans', sans-serif;
+        background: var(--bg-deep);
+        color: var(--text-primary);
+        touch-action: none;
+        overscroll-behavior: none;
+    }
+
+    /* ─── APP SHELL ─── */
+    .app { display:flex; flex-direction:column; height:100dvh; position:relative; }
+
+    /* ─── HEADER ─── */
+    .header {
+        flex-shrink: 0;
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--bg-card);
+        border-bottom: 1px solid var(--border);
+        z-index: 20;
+    }
+    .header-title {
+        font-family: 'DM Mono', monospace;
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+    }
+    .header-sub {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 1px;
+    }
+    .header-actions { display:flex; gap:6px; }
+
+    .icon-btn {
+        width: 38px; height: 38px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg-surface);
+        color: var(--text-secondary);
+        font-size: 16px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .icon-btn:active { background: var(--bg-hover); transform: scale(0.93); }
+    .icon-btn.danger { border-color: rgba(248,113,113,0.2); color: var(--warn); }
+    .icon-btn.danger:active { background: var(--warn-dim); }
+
+    /* ─── PHASE INDICATOR ─── */
+    .phase-bar {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        background: var(--bg-card);
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+    }
+    .phase-step {
+        display: flex; align-items: center; gap: 5px;
+        color: var(--text-muted);
+        transition: color 0.3s;
+    }
+    .phase-step.active { color: var(--accent); }
+    .phase-step.done { color: var(--text-secondary); }
+    .phase-dot {
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: var(--text-muted);
+        transition: background 0.3s, box-shadow 0.3s;
+    }
+    .phase-step.active .phase-dot {
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent-glow);
+    }
+    .phase-step.done .phase-dot { background: var(--text-secondary); }
+    .phase-sep { color: var(--text-muted); font-size: 10px; }
+
+    /* ─── CANVAS / IMAGE AREA ─── */
+    .canvas-area {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        background: var(--bg-deep);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Upload prompt */
+    .upload-prompt {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        z-index: 5;
+        touch-action: auto; /* allow taps here */
+    }
+    .upload-prompt.hidden { display: none; }
+
+    .upload-ring {
+        width: 96px; height: 96px;
+        border-radius: 50%;
+        border: 2px dashed var(--text-muted);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 36px;
+        color: var(--text-muted);
+    }
+    .upload-label {
+        font-size: 16px; font-weight: 500; color: var(--text-secondary);
+    }
+    .upload-hint {
+        font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5;
+    }
+    .upload-buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 4px;
+    }
+    .upload-btn {
+        padding: 14px 24px;
+        border-radius: 12px;
+        border: none;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.15s;
+        touch-action: manipulation; /* explicit tap handling */
+    }
+    .upload-btn:active { transform: scale(0.95); }
+    .upload-btn.camera {
+        background: var(--accent);
+        color: #0b1120;
+    }
+    .upload-btn.library {
+        background: var(--bg-surface);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+    }
+
+    /* Image display */
+    #imageContainer {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    #imageContainer.hidden { display: none; }
+
+    #imagePreview {
+        max-width: 100%; max-height: 100%;
+        object-fit: contain;
+        transform-origin: center center;
+        transition: none;
+        user-select: none;
+        -webkit-user-drag: none;
+    }
+
+    /* Rotation controls */
+    .rotate-controls {
+        position: absolute;
+        bottom: 12px;
+        left: 12px;
+        display: flex;
+        gap: 6px;
+        z-index: 10;
+    }
+    .rotate-controls.hidden { display: none; }
+
+    .rotate-btn {
+        width: 44px; height: 44px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(8px);
+        color: #fff;
+        font-size: 18px;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.15s;
+    }
+    .rotate-btn:active { background: rgba(0,0,0,0.8); transform: scale(0.92); }
+
+    /* Zoom hint */
+    .zoom-hint {
+        position: absolute;
+        bottom: 12px;
+        right: 12px;
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(8px);
+        color: var(--text-secondary);
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 11px;
+        pointer-events: none;
+        text-align: right;
+        line-height: 1.5;
+        z-index: 10;
+    }
+    .zoom-hint.hidden { display: none; }
+
+    /* Overlay canvas for swipe */
+    #overlayCanvas {
+        position: absolute;
+        inset: 0;
+        z-index: 8;
+        display: none;
+    }
+    #overlayCanvas.active { display: block; }
+
+    /* ─── LOCK BAR ─── */
+    .lock-bar {
+        flex-shrink: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: var(--bg-card);
+        border-top: 1px solid var(--border);
+    }
+    .lock-bar.visible { display: flex; }
+
+    .lock-btn {
+        flex: 1;
+        max-width: 320px;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 10px;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .lock-btn:active { transform: scale(0.97); }
+
+    .lock-btn.primary {
+        background: var(--accent);
+        color: #0b1120;
+    }
+    .lock-btn.unlock {
+        background: var(--lock-dim);
+        color: var(--lock-color);
+        border: 1px solid rgba(251,191,36,0.25);
+    }
+
+    /* ─── STATUS BAR ─── */
+    .status-bar {
+        flex-shrink: 0;
+        padding: 6px 16px;
+        background: var(--bg-surface);
+        border-top: 1px solid var(--border);
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
+    }
+    .status-bar .accent { color: var(--accent); }
+
+    /* ─── BOTTOM PANEL (crop preview) — overlaid, not in flow ─── */
+    .bottom-panel {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--bg-card);
+        border-top: 1px solid var(--border);
+        transform: translateY(100%);
+        transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 25;
+    }
+    .bottom-panel.open { transform: translateY(0); }
+
+    .panel-inner { padding: 12px 16px; }
+    .panel-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 10px;
+    }
+    .panel-title {
+        font-family: 'DM Mono', monospace;
+        font-size: 12px;
+        color: var(--text-secondary);
+        letter-spacing: 0.05em;
+    }
+    .panel-actions { display: flex; gap: 6px; }
+    .pill-btn {
+        padding: 6px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg-surface);
+        color: var(--text-secondary);
+        font-family: 'DM Sans', sans-serif;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .pill-btn:active { transform: scale(0.95); }
+    .pill-btn.primary {
+        background: var(--accent);
+        color: #0b1120;
+        border-color: var(--accent);
+    }
+
+    .crop-preview-container {
+        background: var(--bg-deep);
+        border-radius: 8px;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 80px;
+    }
+    #cropPreview {
+        max-width: 100%;
+        max-height: 120px;
+        border-radius: 4px;
+    }
+
+    /* ─── DEBUG TOGGLES ─── */
+    .debug-toggles {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+    }
+    .toggle-chip {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        cursor: pointer;
+        transition: all 0.15s;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+    }
+    .toggle-chip:active { transform: scale(0.95); }
+    .toggle-chip.on {
+        background: var(--accent-dim);
+        border-color: rgba(52, 211, 153, 0.3);
+    }
+    .toggle-chip .chip-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--text-muted);
+        transition: background 0.15s;
+    }
+    .toggle-chip.on .chip-dot {
+        background: var(--accent);
+        box-shadow: 0 0 6px var(--accent-glow);
+    }
+    .toggle-chip .chip-label {
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        color: var(--text-muted);
+        transition: color 0.15s;
+    }
+    .toggle-chip.on .chip-label {
+        color: var(--accent);
+    }
+    .toggle-order {
+        font-family: 'DM Mono', monospace;
+        font-size: 9px;
+        color: var(--text-muted);
+        width: 14px; height: 14px;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.04);
+        display: flex; align-items: center; justify-content: center;
+    }
+    .toggle-chip.on .toggle-order { color: var(--accent); }
+
+    /* ─── OCR SECTION ─── */
+    .ocr-section {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .ocr-btn {
+        padding: 10px 20px;
+        border-radius: 10px;
+        border: none;
+        background: var(--accent);
+        color: #0b1120;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+        touch-action: manipulation;
+        flex-shrink: 0;
+    }
+    .ocr-btn:active { transform: scale(0.95); }
+    .ocr-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+    .ocr-result {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 40px;
+    }
+    .ocr-result.hidden { display: none; }
+    .ocr-loading {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        color: var(--text-secondary);
+    }
+    .ocr-loading.hidden { display: none; }
+    .ocr-spinner {
+        width: 16px; height: 16px;
+        border: 2px solid var(--bg-surface);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ocr-output {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .ocr-output.hidden { display: none; }
+    .ocr-value {
+        flex: 1;
+        background: var(--bg-deep);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-family: 'DM Mono', monospace;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: 0.1em;
+        outline: none;
+    }
+    .ocr-value:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+    .ocr-confidence {
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        color: var(--text-muted);
+        white-space: nowrap;
+    }
+
+    /* ─── LOCKED OVERLAY ─── */
+    .locked-badge {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(251, 191, 36, 0.15);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(251, 191, 36, 0.3);
+        color: var(--lock-color);
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        padding: 5px 14px;
+        border-radius: 20px;
+        z-index: 15;
+        display: none;
+    }
+    .locked-badge.visible { display: block; }
+
+    /* Swipe instructions */
+    .swipe-instructions {
+        position: absolute;
+        bottom: 60px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.65);
+        backdrop-filter: blur(8px);
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 18px;
+        border-radius: 20px;
+        z-index: 15;
+        display: none;
+        white-space: nowrap;
+    }
+    .swipe-instructions.visible { display: block; }
+
+    /* Hidden file input */
+    #fileInput { display: none; }
+</style>
+```
+
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <div class="header-title">METER READER</div>
+                <div class="header-sub" id="headerSub">Upload a meter photo</div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" id="undoBtn" title="Undo swipe">↩</button>
+                <button class="icon-btn danger" id="resetBtn" title="Reset all">✕</button>
+            </div>
+        </header>
+
+```
+    <!-- Phase indicator -->
+    <div class="phase-bar">
+        <div class="phase-step active" id="phase1">
+            <div class="phase-dot"></div>
+            <span>Upload</span>
+        </div>
+        <span class="phase-sep">›</span>
+        <div class="phase-step" id="phase2">
+            <div class="phase-dot"></div>
+            <span>Adjust</span>
+        </div>
+        <span class="phase-sep">›</span>
+        <div class="phase-step" id="phase3">
+            <div class="phase-dot"></div>
+            <span>Lock</span>
+        </div>
+        <span class="phase-sep">›</span>
+        <div class="phase-step" id="phase4">
+            <div class="phase-dot"></div>
+            <span>Swipe</span>
+        </div>
+    </div>
+
+    <!-- Canvas / Image area -->
+    <div class="canvas-area" id="canvasArea">
+        <!-- Upload prompt -->
+        <div class="upload-prompt" id="uploadPrompt">
+            <div class="upload-ring">📷</div>
+            <div class="upload-label">Capture a meter reading</div>
+            <div class="upload-hint">Take a photo or choose from your library</div>
+            <div class="upload-buttons">
+                <button class="upload-btn camera" id="uploadBtn">📷 Take Photo or Upload</button>
+            </div>
+        </div>
+
+        <!-- Image container -->
+        <div id="imageContainer" class="hidden">
+            <img id="imagePreview" alt="Meter photo">
+        </div>
+
+        <!-- Rotate controls (visible during Adjust phase) -->
+        <div class="rotate-controls hidden" id="rotateControls">
+            <button class="rotate-btn" id="rotateLeft" title="Rotate left 45°">↺</button>
+            <button class="rotate-btn" id="rotateRight" title="Rotate right 45°">↻</button>
+        </div>
+
+        <!-- Zoom hint -->
+        <div class="zoom-hint hidden" id="zoomHint">
+            Pinch to zoom<br>Double-tap to reset
+        </div>
+
+        <!-- Overlay canvas for swipe drawing -->
+        <canvas id="overlayCanvas"></canvas>
+
+        <!-- Locked badge -->
+        <div class="locked-badge" id="lockedBadge">🔒 LOCKED</div>
+
+        <!-- Swipe instructions -->
+        <div class="swipe-instructions" id="swipeInstructions">Swipe across the numbers</div>
+    </div>
+
+    <!-- Lock / Unlock bar -->
+    <div class="lock-bar" id="lockBar">
+        <button class="lock-btn primary" id="lockBtn">🔒 Lock Image</button>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar" id="statusBar">
+        <span id="statusText">Waiting for photo…</span>
+    </div>
+
+    <!-- Bottom panel for crop preview -->
+    <div class="bottom-panel" id="bottomPanel">
+        <div class="panel-inner">
+            <div class="panel-header">
+                <span class="panel-title">CROPPED REGION</span>
+                <div class="panel-actions">
+                    <button class="pill-btn" id="redoSwipeBtn">Redo</button>
+                </div>
+            </div>
+            <div class="crop-preview-container">
+                <canvas id="cropPreview"></canvas>
+            </div>
+            <div class="debug-toggles">
+                <div class="toggle-chip on" data-step="grayscale">
+                    <span class="toggle-order">1</span>
+                    <div class="chip-dot"></div>
+                    <span class="chip-label">Grayscale</span>
+                </div>
+                <div class="toggle-chip on" data-step="contrast">
+                    <span class="toggle-order">2</span>
+                    <div class="chip-dot"></div>
+                    <span class="chip-label">Contrast</span>
+                </div>
+                <div class="toggle-chip on" data-step="binarize">
+                    <span class="toggle-order">3</span>
+                    <div class="chip-dot"></div>
+                    <span class="chip-label">Binarize</span>
+                </div>
+            </div>
+            <div class="ocr-section">
+                <button class="ocr-btn" id="readNumbersBtn">Read Numbers</button>
+                <div class="ocr-result hidden" id="ocrResult">
+                    <div class="ocr-loading hidden" id="ocrLoading">
+                        <div class="ocr-spinner"></div>
+                        <span>Running OCR…</span>
+                    </div>
+                    <div class="ocr-output hidden" id="ocrOutput">
+                        <input type="text" class="ocr-value" id="ocrValue" placeholder="—" readonly>
+                        <span class="ocr-confidence" id="ocrConfidence"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*">
+
+<!-- Tesseract.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<script>
+(() => {
+    'use strict';
+
+    // ── State ──
+    let currentPhase = 1; // 1=Upload, 2=Adjust, 3=Locked, 4=Swipe
+    let originalImage = null; // full-res Image object
+    let currentScale = 1;
+    let translateX = 0, translateY = 0;
+    let currentRotation = 0;
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let lastTouchDist = 0;
+    let isLocked = false;
+
+    // Swipe state
+    let isDrawing = false;
+    let swipePath = [];
+    let boundingBox = null;
+
+    // ── Elements ──
+    const uploadPrompt   = document.getElementById('uploadPrompt');
+    const imageContainer = document.getElementById('imageContainer');
+    const imagePreview   = document.getElementById('imagePreview');
+    const fileInput      = document.getElementById('fileInput');
+    const uploadBtn      = document.getElementById('uploadBtn');
+    const rotateControls = document.getElementById('rotateControls');
+    const zoomHint       = document.getElementById('zoomHint');
+    const overlayCanvas  = document.getElementById('overlayCanvas');
+    const ovCtx          = overlayCanvas.getContext('2d');
+    const lockedBadge    = document.getElementById('lockedBadge');
+    const swipeInstr     = document.getElementById('swipeInstructions');
+    const lockBar        = document.getElementById('lockBar');
+    const lockBtn        = document.getElementById('lockBtn');
+    const statusText     = document.getElementById('statusText');
+    const headerSub      = document.getElementById('headerSub');
+    const bottomPanel    = document.getElementById('bottomPanel');
+    const cropPreview    = document.getElementById('cropPreview');
+    const cropCtx        = cropPreview.getContext('2d');
+    const undoBtn        = document.getElementById('undoBtn');
+    const resetBtn       = document.getElementById('resetBtn');
+    const redoSwipeBtn   = document.getElementById('redoSwipeBtn');
+    const readNumbersBtn = document.getElementById('readNumbersBtn');
+    const ocrResult      = document.getElementById('ocrResult');
+    const ocrLoading     = document.getElementById('ocrLoading');
+    const ocrOutput      = document.getElementById('ocrOutput');
+    const ocrValue       = document.getElementById('ocrValue');
+    const ocrConfidence  = document.getElementById('ocrConfidence');
+
+    const phases = [
+        document.getElementById('phase1'),
+        document.getElementById('phase2'),
+        document.getElementById('phase3'),
+        document.getElementById('phase4')
+    ];
+
+    // ── Phase Management ──
+    function setPhase(p) {
+        currentPhase = p;
+        phases.forEach((el, i) => {
+            el.classList.remove('active', 'done');
+            if (i + 1 < p) el.classList.add('done');
+            else if (i + 1 === p) el.classList.add('active');
+        });
+
+        // Phase 1: Upload
+        uploadPrompt.classList.toggle('hidden', p !== 1);
+        imageContainer.classList.toggle('hidden', p < 2);
+
+        // Phase 2: Adjust
+        rotateControls.classList.toggle('hidden', p !== 2);
+        zoomHint.classList.toggle('hidden', p !== 2);
+        lockBar.classList.toggle('visible', p === 2);
+
+        // Phase 3: Locked → auto-advance to 4
+        if (p === 3) {
+            isLocked = true;
+            lockedBadge.classList.add('visible');
+            lockBar.classList.add('visible');
+            lockBtn.textContent = '🔓 Unlock Image';
+            lockBtn.className = 'lock-btn unlock';
+            swipeInstr.classList.add('visible');
+            overlayCanvas.classList.add('active');
+            resizeOverlay();
+            headerSub.textContent = 'Swipe across the numbers';
+            statusText.innerHTML = '<span class="accent">Locked</span> — swipe over the meter numbers';
+            // We treat 3 and 4 together; swipe is enabled once locked
+            setPhaseIndicator(4);
+        }
+
+        // Phase 2 status
+        if (p === 2) {
+            isLocked = false;
+            lockedBadge.classList.remove('visible');
+            swipeInstr.classList.remove('visible');
+            overlayCanvas.classList.remove('active');
+            lockBtn.textContent = '🔒 Lock Image';
+            lockBtn.className = 'lock-btn primary';
+            headerSub.textContent = 'Zoom, pan & rotate to frame the numbers';
+            statusText.textContent = 'Adjust the image, then lock';
+            bottomPanel.classList.remove('open');
+            clearSwipe();
+        }
+    }
+
+    function setPhaseIndicator(p) {
+        phases.forEach((el, i) => {
+            el.classList.remove('active', 'done');
+            if (i + 1 < p) el.classList.add('done');
+            else if (i + 1 === p) el.classList.add('active');
+        });
+    }
+
+    // ── File Upload ──
+    uploadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fileInput.click();
+    });
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) loadImage(file);
+    });
+
+    let originalFile = null;
+    let originalPixels = null; // clean ImageData of original image
+
+    function loadImage(file) {
+        originalFile = file;
+        // Try blob URL first, then fall back to data URL
+        tryLoadWithUrl(file, URL.createObjectURL(file), () => {
+            // Fallback: use FileReader data URL
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                tryLoadWithUrl(file, e.target.result, null);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function tryLoadWithUrl(file, url, fallback) {
+        const img = new Image();
+        img.onload = () => {
+            originalImage = img;
+            imagePreview.src = url;
+
+            // Capture pixels immediately into clean ImageData
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = img.naturalWidth;
+            tempCanvas.height = img.naturalHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(img, 0, 0);
+            try {
+                originalPixels = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            } catch (e) {
+                console.warn('Canvas tainted with this URL type, trying fallback:', e);
+                if (fallback) { fallback(); return; }
+                originalPixels = null;
+            }
+
+            // Reset transforms
+            currentScale = 1;
+            translateX = 0;
+            translateY = 0;
+            currentRotation = 0;
+            updateTransform();
+            setPhase(2);
+        };
+        img.src = url;
+    }
+
+    // ── Transform helpers ──
+    function updateTransform() {
+        imagePreview.style.transform =
+            `rotate(${currentRotation}deg) scale(${currentScale}) translate(${translateX / currentScale}px, ${translateY / currentScale}px)`;
+    }
+
+    function resetTransform() {
+        currentScale = 1;
+        translateX = 0;
+        translateY = 0;
+        updateTransform();
+    }
+
+    // ── Rotate ──
+    document.getElementById('rotateLeft').addEventListener('click', () => {
+        currentRotation -= 45;
+        updateTransform();
+    });
+    document.getElementById('rotateRight').addEventListener('click', () => {
+        currentRotation += 45;
+        updateTransform();
+    });
+
+    // ── Zoom (wheel) ──
+    imageContainer.addEventListener('wheel', (e) => {
+        if (isLocked) return;
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.25 : -0.25;
+        currentScale = Math.min(Math.max(currentScale + delta, 1), 6);
+        if (currentScale <= 1) { translateX = 0; translateY = 0; }
+        updateTransform();
+    }, { passive: false });
+
+    // ── Double-tap to reset (must not conflict with pinch) ──
+    let lastTap = 0;
+    let wasGesture = false; // true if a pinch or pan just happened
+
+    imageContainer.addEventListener('touchend', (e) => {
+        if (isLocked) return;
+        // If a multi-touch gesture or drag just finished, suppress double-tap
+        if (wasGesture) {
+            wasGesture = false;
+            lastTap = 0;
+            isDragging = false;
+            return;
+        }
+        isDragging = false;
+        // Only count single-finger taps (no movement)
+        if (e.changedTouches.length === 1) {
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                e.preventDefault();
+                resetTransform();
+                lastTap = 0;
+            } else {
+                lastTap = now;
+            }
+        }
+    });
+    imageContainer.addEventListener('dblclick', (e) => {
+        if (isLocked) return;
+        e.preventDefault();
+        resetTransform();
+    });
+
+    // ── Touch: pinch zoom + pan (Adjust phase only) ──
+    function getTouchDist(a, b) {
+        return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    }
+
+    imageContainer.addEventListener('touchstart', (e) => {
+        if (isLocked) return; // swipe handled on overlay
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            lastTouchDist = getTouchDist(e.touches[0], e.touches[1]);
+        } else if (e.touches.length === 1 && currentScale > 1) {
+            isDragging = true;
+            dragStartX = e.touches[0].clientX;
+            dragStartY = e.touches[0].clientY;
+        }
+    }, { passive: false });
+
+    imageContainer.addEventListener('touchmove', (e) => {
+        if (isLocked) return;
+        wasGesture = true; // any movement means this isn't a tap
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const dist = getTouchDist(e.touches[0], e.touches[1]);
+            const ratio = dist / lastTouchDist;
+            currentScale = Math.min(Math.max(currentScale * ratio, 1), 6);
+            lastTouchDist = dist;
+            if (currentScale <= 1) { translateX = 0; translateY = 0; }
+            updateTransform();
+        } else if (e.touches.length === 1 && isDragging) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - dragStartX;
+            const dy = e.touches[0].clientY - dragStartY;
+            // Rotate delta to match image rotation
+            const rad = (currentRotation * Math.PI) / 180;
+            translateX += dx * Math.cos(rad) + dy * Math.sin(rad);
+            translateY += -dx * Math.sin(rad) + dy * Math.cos(rad);
+            dragStartX = e.touches[0].clientX;
+            dragStartY = e.touches[0].clientY;
+            updateTransform();
+        }
+    }, { passive: false });
+
+    // ── Mouse pan (Adjust, when zoomed) ──
+    imageContainer.addEventListener('mousedown', (e) => {
+        if (isLocked || currentScale <= 1 || e.detail === 2) return;
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        imageContainer.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging || isLocked) return;
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        const rad = (currentRotation * Math.PI) / 180;
+        translateX += dx * Math.cos(rad) + dy * Math.sin(rad);
+        translateY += -dx * Math.sin(rad) + dy * Math.cos(rad);
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        updateTransform();
+    });
+    window.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            imageContainer.style.cursor = '';
+        }
+    });
+
+    // ── Lock / Unlock ──
+    lockBtn.addEventListener('click', () => {
+        if (!isLocked) {
+            setPhase(3);
+        } else {
+            setPhase(2);
+        }
+    });
+
+    // ── Overlay canvas resize ──
+    function resizeOverlay() {
+        const area = document.getElementById('canvasArea');
+        overlayCanvas.width = area.clientWidth;
+        overlayCanvas.height = area.clientHeight;
+    }
+    window.addEventListener('resize', () => { if (isLocked) resizeOverlay(); });
+
+    // ── Swipe drawing on overlay ──
+    function getPos(e) {
+        const r = overlayCanvas.getBoundingClientRect();
+        const touch = e.touches ? e.touches[0] : e;
+        return { x: touch.clientX - r.left, y: touch.clientY - r.top };
+    }
+
+    overlayCanvas.addEventListener('touchstart', onSwipeStart, { passive: false });
+    overlayCanvas.addEventListener('mousedown', onSwipeStart);
+
+    function onSwipeStart(e) {
+        if (!isLocked) return;
+        e.preventDefault();
+        isDrawing = true;
+        swipePath = [];
+        boundingBox = null;
+        bottomPanel.classList.remove('open');
+        const p = getPos(e);
+        swipePath.push(p);
+        drawSwipe();
+    }
+
+    overlayCanvas.addEventListener('touchmove', onSwipeMove, { passive: false });
+    overlayCanvas.addEventListener('mousemove', onSwipeMove);
+
+    function onSwipeMove(e) {
+        if (!isDrawing) return;
+        e.preventDefault();
+        const p = getPos(e);
+        swipePath.push(p);
+        drawSwipe();
+    }
+
+    overlayCanvas.addEventListener('touchend', onSwipeEnd);
+    overlayCanvas.addEventListener('mouseup', onSwipeEnd);
+
+    function onSwipeEnd() {
+        if (!isDrawing) return;
+        isDrawing = false;
+        if (swipePath.length < 5) { clearSwipe(); return; }
+        computeBoundingBox();
+        drawSwipe();
+        cropRegion();
+    }
+
+    function drawSwipe() {
+        ovCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        if (swipePath.length < 2) return;
+
+        // Draw translucent green band along path
+        ovCtx.save();
+        ovCtx.lineWidth = 40;
+        ovCtx.strokeStyle = 'rgba(52, 211, 153, 0.5)';
+        ovCtx.lineCap = 'round';
+        ovCtx.lineJoin = 'round';
+        ovCtx.beginPath();
+        ovCtx.moveTo(swipePath[0].x, swipePath[0].y);
+        for (let i = 1; i < swipePath.length; i++) {
+            ovCtx.lineTo(swipePath[i].x, swipePath[i].y);
+        }
+        ovCtx.stroke();
+        ovCtx.restore();
+
+        // Draw bounding box if computed
+        if (boundingBox) {
+            const b = boundingBox;
+            ovCtx.save();
+            ovCtx.setLineDash([6, 4]);
+            ovCtx.strokeStyle = '#34d399';
+            ovCtx.lineWidth = 2;
+            ovCtx.strokeRect(b.x, b.y, b.w, b.h);
+
+            // Corner markers
+            const cLen = 12;
+            ovCtx.setLineDash([]);
+            ovCtx.lineWidth = 3;
+            ovCtx.strokeStyle = '#34d399';
+            const corners = [
+                [b.x, b.y], [b.x + b.w, b.y],
+                [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]
+            ];
+            corners.forEach(([cx, cy]) => {
+                const sx = cx === b.x ? 1 : -1;
+                const sy = cy === b.y ? 1 : -1;
+                ovCtx.beginPath();
+                ovCtx.moveTo(cx + sx * cLen, cy);
+                ovCtx.lineTo(cx, cy);
+                ovCtx.lineTo(cx, cy + sy * cLen);
+                ovCtx.stroke();
+            });
+            ovCtx.restore();
+        }
+    }
+
+    function computeBoundingBox() {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of swipePath) {
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+        }
+        // Expand by stroke radius only (half of 40px line width)
+        const r = 20;
+        boundingBox = {
+            x: Math.max(0, minX - r),
+            y: Math.max(0, minY - r),
+            w: Math.min(overlayCanvas.width, maxX + r) - Math.max(0, minX - r),
+            h: Math.min(overlayCanvas.height, maxY + r) - Math.max(0, minY - r)
+        };
+    }
+
+    // ── Crop from the displayed image ──
+    async function cropRegion() {
+        if (!boundingBox || !originalPixels) return;
+
+        const area = document.getElementById('canvasArea');
+        const areaRect = area.getBoundingClientRect();
+
+        // Build an ImageBitmap from the stored clean pixel data
+        const srcCanvas = document.createElement('canvas');
+        srcCanvas.width = originalPixels.width;
+        srcCanvas.height = originalPixels.height;
+        const srcCtx = srcCanvas.getContext('2d');
+        srcCtx.putImageData(originalPixels, 0, 0);
+
+        const offscreen = document.createElement('canvas');
+        offscreen.width = areaRect.width * 2; // 2x for quality
+        offscreen.height = areaRect.height * 2;
+        const octx = offscreen.getContext('2d');
+        octx.scale(2, 2);
+
+        // Replicate the CSS transform
+        const cx = areaRect.width / 2;
+        const cy = areaRect.height / 2;
+
+        const naturalW = originalPixels.width;
+        const naturalH = originalPixels.height;
+
+        // Compute the "object-fit: contain" display size
+        const areaW = areaRect.width;
+        const areaH = areaRect.height;
+        const ratio = Math.min(areaW / naturalW, areaH / naturalH);
+        const dispW = naturalW * ratio;
+        const dispH = naturalH * ratio;
+
+        octx.save();
+        octx.translate(cx, cy);
+        octx.rotate((currentRotation * Math.PI) / 180);
+        octx.scale(currentScale, currentScale);
+        octx.translate(translateX / currentScale, translateY / currentScale);
+        octx.drawImage(srcCanvas, -dispW / 2, -dispH / 2, dispW, dispH);
+        octx.restore();
+
+        // Crop the bounding box region — this canvas is 100% clean
+        const b = boundingBox;
+        const sx = b.x * 2, sy = b.y * 2, sw = b.w * 2, sh = b.h * 2;
+
+        lastRawCrop = octx.getImageData(sx, sy, sw, sh);
+        applyCropProcessing();
+
+        bottomPanel.classList.add('open');
+        statusText.innerHTML = 'Region captured — <span class="accent">preview below</span>';
+    }
+
+    // ── Debug toggle state ──
+    let lastRawCrop = null;
+    const processingSteps = { grayscale: true, contrast: true, binarize: true };
+
+    document.querySelectorAll('.toggle-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const step = chip.dataset.step;
+            processingSteps[step] = !processingSteps[step];
+            chip.classList.toggle('on', processingSteps[step]);
+
+            // Enforce progression: contrast requires grayscale, binarize requires contrast
+            if (!processingSteps.grayscale) {
+                processingSteps.contrast = false;
+                processingSteps.binarize = false;
+            }
+            if (!processingSteps.contrast) {
+                processingSteps.binarize = false;
+            }
+
+            // Update chip visual state
+            document.querySelectorAll('.toggle-chip').forEach(c => {
+                c.classList.toggle('on', processingSteps[c.dataset.step]);
+            });
+
+            if (lastRawCrop) applyCropProcessing();
+        });
+    });
+
+    function applyProcessingToImageData(imgData) {
+        const d = imgData.data;
+        const totalPixels = imgData.width * imgData.height;
+
+        if (processingSteps.grayscale) {
+            const grayValues = new Uint8Array(totalPixels);
+            let localMin = 255, localMax = 0;
+            for (let i = 0; i < totalPixels; i++) {
+                const gi = i * 4;
+                const gray = Math.round(0.299 * d[gi] + 0.587 * d[gi+1] + 0.114 * d[gi+2]);
+                grayValues[i] = gray;
+                d[gi] = d[gi+1] = d[gi+2] = gray;
+                if (gray < localMin) localMin = gray;
+                if (gray > localMax) localMax = gray;
+            }
+
+            if (processingSteps.contrast) {
+                const sorted = Array.from(grayValues).sort((a, b) => a - b);
+                const lo = sorted[Math.floor(totalPixels * 0.02)];
+                const hi = sorted[Math.floor(totalPixels * 0.98)];
+                const cRange = hi - lo || 1;
+                const gamma = 0.75;
+
+                for (let i = 0; i < totalPixels; i++) {
+                    let v = (grayValues[i] - lo) / cRange;
+                    v = Math.min(1, Math.max(0, v));
+                    v = Math.pow(v, gamma);
+                    const stretched = Math.round(v * 255);
+                    grayValues[i] = stretched;
+                    const gi = i * 4;
+                    d[gi] = d[gi+1] = d[gi+2] = stretched;
+                }
+
+                if (processingSteps.binarize) {
+                    const histogram = new Int32Array(256);
+                    for (let i = 0; i < totalPixels; i++) {
+                        histogram[grayValues[i]]++;
+                    }
+                    let sum = 0;
+                    for (let t = 0; t < 256; t++) sum += t * histogram[t];
+                    let sumB = 0, wB = 0, wF = 0;
+                    let maxVariance = 0, threshold = 128;
+                    for (let t = 0; t < 256; t++) {
+                        wB += histogram[t];
+                        if (wB === 0) continue;
+                        wF = totalPixels - wB;
+                        if (wF === 0) break;
+                        sumB += t * histogram[t];
+                        const mB = sumB / wB;
+                        const mF = (sum - sumB) / wF;
+                        const variance = wB * wF * (mB - mF) * (mB - mF);
+                        if (variance > maxVariance) {
+                            maxVariance = variance;
+                            threshold = t;
+                        }
+                    }
+                    for (let i = 0; i < totalPixels; i++) {
+                        const val = grayValues[i] > threshold ? 255 : 0;
+                        const gi = i * 4;
+                        d[gi] = d[gi+1] = d[gi+2] = val;
+                    }
+                }
+            }
+        }
+    }
+
+    function applyCropProcessing() {
+        if (!lastRawCrop) return;
+        const sw = lastRawCrop.width;
+        const sh = lastRawCrop.height;
+
+        const imgData = new ImageData(
+            new Uint8ClampedArray(lastRawCrop.data),
+            sw, sh
+        );
+        applyProcessingToImageData(imgData);
+
+        cropPreview.width = sw;
+        cropPreview.height = sh;
+        cropCtx.putImageData(imgData, 0, 0);
+    }
+
+    // ── Clear swipe ──
+    function clearSwipe() {
+        swipePath = [];
+        boundingBox = null;
+        lastRawCrop = null;
+        if (overlayCanvas.width) ovCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        bottomPanel.classList.remove('open');
+        // Reset OCR
+        ocrResult.classList.add('hidden');
+        ocrLoading.classList.add('hidden');
+        ocrOutput.classList.add('hidden');
+        ocrValue.value = '';
+        ocrConfidence.textContent = '';
+    }
+
+    // ── Buttons ──
+    undoBtn.addEventListener('click', () => {
+        if (isLocked) {
+            clearSwipe();
+            statusText.innerHTML = '<span class="accent">Locked</span> — swipe over the meter numbers';
+        }
+    });
+
+    resetBtn.addEventListener('click', () => {
+        originalImage = null;
+        originalFile = null;
+        originalPixels = null;
+        imagePreview.src = '';
+        currentScale = 1;
+        translateX = 0;
+        translateY = 0;
+        currentRotation = 0;
+        isLocked = false;
+        isDragging = false;
+        clearSwipe();
+        lockedBadge.classList.remove('visible');
+        swipeInstr.classList.remove('visible');
+        overlayCanvas.classList.remove('active');
+        lockBar.classList.remove('visible');
+        fileInput.value = '';
+        setPhase(1);
+        statusText.textContent = 'Waiting for photo…';
+        headerSub.textContent = 'Upload a meter photo';
+    });
+
+    redoSwipeBtn.addEventListener('click', () => {
+        clearSwipe();
+        statusText.innerHTML = '<span class="accent">Locked</span> — swipe again';
+    });
+
+    // ── OCR with Tesseract.js ──
+    let tesseractWorker = null;
+
+    readNumbersBtn.addEventListener('click', async () => {
+        if (!lastRawCrop) return;
+
+        // Show loading
+        readNumbersBtn.disabled = true;
+        ocrResult.classList.remove('hidden');
+        ocrLoading.classList.remove('hidden');
+        ocrOutput.classList.add('hidden');
+        statusText.textContent = 'Running OCR…';
+
+        try {
+            // Lazy-init worker
+            if (!tesseractWorker) {
+                tesseractWorker = await Tesseract.createWorker('eng', 1, {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            statusText.textContent = `OCR: ${Math.round((m.progress || 0) * 100)}%`;
+                        }
+                    }
+                });
+                await tesseractWorker.setParameters({
+                    tessedit_char_whitelist: '0123456789.',
+                    tessedit_pageseg_mode: '7', // single line
+                });
+            }
+
+            // Create a clean (untainted) canvas from the processed ImageData
+            const cleanCanvas = document.createElement('canvas');
+            cleanCanvas.width = cropPreview.width;
+            cleanCanvas.height = cropPreview.height;
+            const cleanCtx = cleanCanvas.getContext('2d');
+            // Re-run processing onto the clean canvas
+            const cleanData = new ImageData(
+                new Uint8ClampedArray(lastRawCrop.data),
+                lastRawCrop.width, lastRawCrop.height
+            );
+            // Apply the same processing pipeline
+            applyProcessingToImageData(cleanData);
+            cleanCtx.putImageData(cleanData, 0, 0);
+
+            // Convert to blob for Tesseract
+            const blob = await new Promise(resolve => cleanCanvas.toBlob(resolve, 'image/png'));
+            const { data } = await tesseractWorker.recognize(blob);
+            const text = data.text.trim().replace(/\s+/g, '');
+            const confidence = Math.round(data.confidence);
+
+            ocrLoading.classList.add('hidden');
+            ocrOutput.classList.remove('hidden');
+            ocrValue.value = text || '—';
+            ocrValue.readOnly = false;
+            ocrConfidence.textContent = confidence + '%';
+            ocrConfidence.style.color = confidence >= 70 ? 'var(--accent)' : 'var(--warn)';
+
+            statusText.innerHTML = `OCR complete — <span class="accent">${confidence}% confidence</span>`;
+        } catch (err) {
+            console.error('OCR error:', err);
+            ocrLoading.classList.add('hidden');
+            ocrOutput.classList.remove('hidden');
+            ocrValue.value = 'Error';
+            ocrConfidence.textContent = '';
+            statusText.textContent = 'OCR failed — try again';
+        }
+
+        readNumbersBtn.disabled = false;
+    });
+
+    // Re-run OCR when toggles change (feedback loop)
+    document.querySelectorAll('.toggle-chip').forEach(chip => {
+        const origListener = chip.onclick;
+        chip.addEventListener('click', () => {
+            // If OCR was already run, re-run with new processing
+            if (ocrOutput && !ocrOutput.classList.contains('hidden') && lastRawCrop) {
+                // Small delay to let the canvas re-render
+                setTimeout(() => readNumbersBtn.click(), 100);
+            }
+        });
+    });
+
+    // ── Init ──
+    setPhase(1);
+})();
+</script>
+```
+
+</body>
+</html>

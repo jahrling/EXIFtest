@@ -887,7 +887,6 @@
     }
 
     function computeBoundingBox() {
-        const pad = 20;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const p of swipePath) {
             if (p.x < minX) minX = p.x;
@@ -895,13 +894,13 @@
             if (p.x > maxX) maxX = p.x;
             if (p.y > maxY) maxY = p.y;
         }
-        // Expand vertically by stroke width
-        const sw = 20; // half of 40px stroke
+        // Expand by stroke radius only (half of 40px line width)
+        const r = 20;
         boundingBox = {
-            x: Math.max(0, minX - pad),
-            y: Math.max(0, minY - sw - pad),
-            w: Math.min(overlayCanvas.width, maxX + pad) - Math.max(0, minX - pad),
-            h: Math.min(overlayCanvas.height, maxY + sw + pad) - Math.max(0, minY - sw - pad)
+            x: Math.max(0, minX - r),
+            y: Math.max(0, minY - r),
+            w: Math.min(overlayCanvas.width, maxX + r) - Math.max(0, minX - r),
+            h: Math.min(overlayCanvas.height, maxY + r) - Math.max(0, minY - r)
         };
     }
 

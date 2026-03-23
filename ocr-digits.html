@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Per-Digit OCR Test Harness</title>
+<title>Per-Digit OCR Test Harness v2</title>
 <style>
   :root {
     --bg: #1a1a2e;
@@ -30,162 +30,71 @@
     padding: 1rem;
     -webkit-text-size-adjust: 100%;
   }
-  h1 {
-    font-size: 1.3rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    margin-bottom: 0.25rem;
-  }
+  h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
   h1 span { color: var(--accent); }
   .subtitle { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 1rem; }
   h2 {
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--accent2);
-    margin: 1.25rem 0 0.5rem;
-    padding-bottom: 0.3rem;
+    font-size: 0.85rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--accent2);
+    margin: 1.25rem 0 0.5rem; padding-bottom: 0.3rem;
     border-bottom: 1px solid var(--border);
   }
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem;
-    margin-bottom: 0.75rem;
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem; }
+  #dropZone {
+    border: 2px dashed var(--accent); border-radius: 8px; padding: 2rem 1rem;
+    text-align: center; cursor: pointer; transition: background 0.2s; position: relative;
   }
-
-/* Upload area */
-#dropZone {
-border: 2px dashed var(–accent);
-border-radius: 8px;
-padding: 2rem 1rem;
-text-align: center;
-cursor: pointer;
-transition: background 0.2s;
-position: relative;
-}
-#dropZone.dragover { background: rgba(233,69,96,0.1); }
-#dropZone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-#dropZone p { color: var(–text-dim); font-size: 0.85rem; }
-#dropZone p strong { color: var(–accent); }
-
-/* Parameters */
-.params {
-display: grid;
-grid-template-columns: 1fr 1fr;
-gap: 0.5rem;
-font-size: 0.8rem;
-}
-.params label { color: var(–text-dim); display: flex; flex-direction: column; gap: 0.2rem; }
-.params input[type=range] { width: 100%; accent-color: var(–accent); }
-.params .val { color: var(–accent2); font-family: var(–mono); font-size: 0.75rem; }
-
-/* Canvas displays */
-.img-row { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; }
-.img-row canvas, .img-row img { max-height: 120px; border: 1px solid var(–border); border-radius: 4px; flex-shrink: 0; }
-canvas.full-width { width: 100%; height: auto; display: block; border: 1px solid var(–border); border-radius: 4px; }
-
-/* Histogram */
-#histogramWrap { position: relative; }
-#histogramCanvas { width: 100%; height: 80px; display: block; }
-
-/* Digit cells */
-.digit-grid {
-display: grid;
-grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
-gap: 0.4rem;
-}
-.digit-cell {
-background: var(–bg);
-border: 1px solid var(–border);
-border-radius: 4px;
-padding: 0.3rem;
-text-align: center;
-font-family: var(–mono);
-font-size: 0.7rem;
-}
-.digit-cell canvas { width: 100%; image-rendering: pixelated; border-radius: 2px; }
-.digit-cell .label { color: var(–text-dim); margin-top: 0.2rem; }
-.digit-cell .thresh { color: var(–accent2); }
-
-/* OCR results */
-.ocr-result {
-font-family: var(–mono);
-font-size: 2rem;
-font-weight: 700;
-letter-spacing: 0.1em;
-padding: 0.5rem;
-text-align: center;
-}
-.ocr-result.global { color: var(–warn); }
-.ocr-result.perdigit { color: var(–success); }
-.ocr-compare {
-display: grid;
-grid-template-columns: 1fr 1fr;
-gap: 0.5rem;
-text-align: center;
-}
-.ocr-compare .lbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(–text-dim); margin-bottom: 0.25rem; }
-
-/* Confidence */
-.conf-bar { display: flex; gap: 2px; justify-content: center; margin-top: 0.25rem; }
-.conf-char {
-display: flex; flex-direction: column; align-items: center;
-font-family: var(–mono); font-size: 0.7rem;
-}
-.conf-char .bar-wrap { width: 18px; height: 40px; background: var(–bg); border-radius: 2px; position: relative; overflow: hidden; }
-.conf-char .bar-fill { position: absolute; bottom: 0; width: 100%; border-radius: 2px; }
-.conf-char .ch { margin-top: 2px; }
-
-/* Status */
-#status {
-font-size: 0.8rem;
-color: var(–text-dim);
-min-height: 1.2em;
-margin: 0.5rem 0;
-font-family: var(–mono);
-}
-#status.busy { color: var(–accent); }
-#status.done { color: var(–success); }
-
-.btn {
-background: var(–accent);
-color: #fff;
-border: none;
-border-radius: 6px;
-padding: 0.6rem 1.2rem;
-font-size: 0.85rem;
-font-weight: 600;
-cursor: pointer;
-width: 100%;
-margin-top: 0.5rem;
-}
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.toggle-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
-.toggle-btn {
-background: var(–surface2);
-border: 1px solid var(–border);
-color: var(–text-dim);
-border-radius: 4px;
-padding: 0.3rem 0.6rem;
-font-size: 0.75rem;
-cursor: pointer;
-}
-.toggle-btn.active { background: var(–accent); color: #fff; border-color: var(–accent); }
-
-.hidden { display: none !important; }
+  #dropZone.dragover { background: rgba(233,69,96,0.1); }
+  #dropZone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  #dropZone p { color: var(--text-dim); font-size: 0.85rem; }
+  #dropZone p strong { color: var(--accent); }
+  .params { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.8rem; }
+  .params label { color: var(--text-dim); display: flex; flex-direction: column; gap: 0.2rem; }
+  .params input[type=range] { width: 100%; accent-color: var(--accent); }
+  .params .val { color: var(--accent2); font-family: var(--mono); font-size: 0.75rem; }
+  canvas.full-width { width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: 4px; }
+  .digit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(55px, 1fr)); gap: 0.4rem; }
+  .digit-cell {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 0.3rem; text-align: center; font-family: var(--mono); font-size: 0.65rem;
+  }
+  .digit-cell canvas { width: 100%; image-rendering: pixelated; border-radius: 2px; }
+  .digit-cell .label { color: var(--text-dim); margin-top: 0.2rem; }
+  .digit-cell .thresh { color: var(--accent2); }
+  .digit-cell .polarity { color: var(--warn); font-size: 0.6rem; }
+  .ocr-result { font-family: var(--mono); font-size: 2rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.5rem; text-align: center; }
+  .ocr-result.global { color: var(--warn); }
+  .ocr-result.perdigit { color: var(--success); }
+  .ocr-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; text-align: center; }
+  .ocr-compare .lbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 0.25rem; }
+  .conf-bar { display: flex; gap: 2px; justify-content: center; margin-top: 0.25rem; }
+  .conf-char { display: flex; flex-direction: column; align-items: center; font-family: var(--mono); font-size: 0.7rem; }
+  .conf-char .bar-wrap { width: 18px; height: 40px; background: var(--bg); border-radius: 2px; position: relative; overflow: hidden; }
+  .conf-char .bar-fill { position: absolute; bottom: 0; width: 100%; border-radius: 2px; }
+  .conf-char .ch { margin-top: 2px; }
+  #status { font-size: 0.8rem; color: var(--text-dim); min-height: 1.2em; margin: 0.5rem 0; font-family: var(--mono); }
+  #status.busy { color: var(--accent); }
+  #status.done { color: var(--success); }
+  .btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 0.6rem 1.2rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; width: 100%; margin-top: 0.5rem; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .toggle-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .toggle-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 4px; padding: 0.3rem 0.6rem; font-size: 0.75rem; cursor: pointer; }
+  .toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .hidden { display: none !important; }
+  .info { font-size: 0.7rem; color: var(--text-dim); margin: 0.3rem 0; line-height: 1.4; }
+  .info strong { color: var(--accent2); }
+  .mode-badge {
+    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.7rem;
+    font-weight: 600; font-family: var(--mono); margin-left: 0.5rem;
+  }
+  .mode-badge.rotary { background: rgba(83,215,105,0.2); color: var(--success); }
+  .mode-badge.seven-seg { background: rgba(0,210,255,0.2); color: var(--accent2); }
 </style>
-
 </head>
 <body>
 
-<h1>Per-Digit <span>OCR</span> Test Harness</h1>
-<p class="subtitle">Adaptive per-digit processing vs global processing — debug & compare</p>
-
-<!-- Upload -->
+<h1>Per-Digit <span>OCR</span> Test Harness <small style="font-size:0.6em;color:var(--text-dim)">v2</small></h1>
+<p class="subtitle">Peak-based segmentation &middot; polarity-aware &middot; adaptive local thresholding</p>
 
 <div class="card">
   <div id="dropZone">
@@ -194,99 +103,71 @@ cursor: pointer;
   </div>
 </div>
 
-<!-- Sample images -->
-
 <div class="card" id="samplesCard">
   <h2>Or use a bundled test image</h2>
   <div class="toggle-row" id="sampleBtns"></div>
 </div>
 
-<!-- Parameters -->
-
 <div class="card hidden" id="paramsCard">
   <h2>Processing Parameters</h2>
   <div class="params">
-    <label>
-      Gamma <span class="val" id="gammaVal">0.75</span>
-      <input type="range" id="gammaSlider" min="0.3" max="2.0" step="0.05" value="0.75">
-    </label>
-    <label>
-      Clip % <span class="val" id="clipVal">2</span>
-      <input type="range" id="clipSlider" min="0" max="10" step="0.5" value="2">
-    </label>
-    <label>
-      Min gap (px) <span class="val" id="gapVal">3</span>
-      <input type="range" id="gapSlider" min="1" max="20" step="1" value="3">
-    </label>
-    <label>
-      Smooth kernel <span class="val" id="kernelVal">5</span>
-      <input type="range" id="kernelSlider" min="1" max="21" step="2" value="5">
-    </label>
+    <label>Gamma <span class="val" id="gammaVal">0.75</span>
+      <input type="range" id="gammaSlider" min="0.3" max="2.0" step="0.05" value="0.75"></label>
+    <label>Clip % <span class="val" id="clipVal">2</span>
+      <input type="range" id="clipSlider" min="0" max="10" step="0.5" value="2"></label>
+    <label>Max digits <span class="val" id="maxDigitsVal">12</span>
+      <input type="range" id="maxDigitsSlider" min="4" max="16" step="1" value="12"></label>
+    <label>Smooth kernel <span class="val" id="kernelVal">5</span>
+      <input type="range" id="kernelSlider" min="1" max="21" step="2" value="5"></label>
   </div>
   <button class="btn" id="runBtn" disabled>Run Per-Digit OCR</button>
   <div id="status"></div>
 </div>
 
-<!-- Debug: Original -->
-
 <div class="card hidden" id="originalCard">
-  <h2>① Original Crop</h2>
+  <h2>&#9312; Original Crop</h2>
   <canvas id="originalCanvas" class="full-width"></canvas>
 </div>
 
-<!-- Debug: Histogram + boundaries -->
-
 <div class="card hidden" id="histCard">
-  <h2>② Vertical Projection Histogram</h2>
-  <div id="histogramWrap">
-    <canvas id="histogramCanvas"></canvas>
-  </div>
+  <h2>&#9313; Vertical Projection + Segmentation <span class="mode-badge" id="modeBadge"></span></h2>
+  <canvas id="histogramCanvas" class="full-width" style="height:100px"></canvas>
   <canvas id="boundaryCanvas" class="full-width"></canvas>
-  <p style="font-size:0.7rem;color:var(--text-dim);margin-top:0.3rem">
-    <span style="color:var(--accent)">Red lines</span> = detected digit column boundaries
-  </p>
+  <div class="info" id="segInfo"></div>
 </div>
 
-<!-- Debug: Per-digit cells -->
-
 <div class="card hidden" id="digitsCard">
-  <h2>③ Per-Digit Processing</h2>
+  <h2>&#9314; Per-Digit Processing</h2>
   <div class="toggle-row">
-    <button class="toggle-btn active" data-show="before">Before</button>
-    <button class="toggle-btn active" data-show="after">After</button>
+    <button class="toggle-btn active" data-show="before">Raw cells</button>
+    <button class="toggle-btn active" data-show="after">Processed</button>
   </div>
   <div id="digitsBefore">
-    <p style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.3rem">Raw digit cells:</p>
     <div class="digit-grid" id="rawDigits"></div>
   </div>
-  <div id="digitsAfter">
-    <p style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.3rem">After local processing (threshold shown):</p>
+  <div id="digitsAfter" style="margin-top:0.4rem">
     <div class="digit-grid" id="procDigits"></div>
   </div>
 </div>
 
-<!-- Debug: Reassembled -->
-
 <div class="card hidden" id="reassembleCard">
-  <h2>④ Reassembled Image</h2>
-  <p style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.3rem">Global (top) vs Per-digit (bottom):</p>
+  <h2>&#9315; Reassembled Image</h2>
+  <p class="info">Global (top) vs Per-digit (bottom):</p>
   <canvas id="globalCanvas" class="full-width" style="margin-bottom:0.25rem"></canvas>
   <canvas id="perdigitCanvas" class="full-width"></canvas>
 </div>
 
-<!-- OCR Results -->
-
 <div class="card hidden" id="resultCard">
-  <h2>⑤ OCR Results</h2>
+  <h2>&#9316; OCR Results</h2>
   <div class="ocr-compare">
     <div>
       <div class="lbl">Global Processing</div>
-      <div class="ocr-result global" id="globalResult">—</div>
+      <div class="ocr-result global" id="globalResult">&mdash;</div>
       <div class="conf-bar" id="globalConf"></div>
     </div>
     <div>
       <div class="lbl">Per-Digit Processing</div>
-      <div class="ocr-result perdigit" id="perdigitResult">—</div>
+      <div class="ocr-result perdigit" id="perdigitResult">&mdash;</div>
       <div class="conf-bar" id="perdigitConf"></div>
     </div>
   </div>
@@ -295,36 +176,25 @@ cursor: pointer;
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <script>
-// ── State ──
-let sourceImageData = null; // raw RGBA ImageData from uploaded crop
-let params = { gamma: 0.75, clip: 2, minGap: 3, kernel: 5 };
-
-// ── DOM refs ──
+// === STATE ===
+let sourceImageData = null;
+let params = { gamma: 0.75, clip: 2, maxDigits: 12, kernel: 5 };
 const $ = id => document.getElementById(id);
 const fileInput = $('fileInput');
 const dropZone = $('dropZone');
 const runBtn = $('runBtn');
 const statusEl = $('status');
 
-// ── Helpers ──
-function setStatus(msg, cls) {
-  statusEl.textContent = msg;
-  statusEl.className = cls || '';
-}
-
+function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ''; }
 function showCard(id) { $(id).classList.remove('hidden'); }
 
+// === IMAGE PRIMITIVES ===
 function imageDataToCanvas(imgData, canvas) {
-  canvas.width = imgData.width;
-  canvas.height = imgData.height;
+  canvas.width = imgData.width; canvas.height = imgData.height;
   canvas.getContext('2d').putImageData(imgData, 0, 0);
   return canvas;
 }
-
-function cloneImageData(src) {
-  return new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-}
-
+function cloneImageData(src) { return new ImageData(new Uint8ClampedArray(src.data), src.width, src.height); }
 function cropImageData(src, x, y, w, h) {
   const out = new ImageData(w, h);
   for (let row = 0; row < h; row++) {
@@ -334,28 +204,23 @@ function cropImageData(src, x, y, w, h) {
   }
   return out;
 }
-
-// ── Image loading (Safari-safe) ──
 function loadImageFile(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       const c = document.createElement('canvas');
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const data = ctx.getImageData(0, 0, c.width, c.height);
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      resolve(c.getContext('2d').getImageData(0, 0, c.width, c.height));
       URL.revokeObjectURL(url);
-      resolve(data);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Load failed')); };
     img.src = url;
   });
 }
 
-// ── Grayscale ──
+// === PIXEL PROCESSING ===
 function toGrayscale(imgData) {
   const out = cloneImageData(imgData);
   const d = out.data;
@@ -365,8 +230,6 @@ function toGrayscale(imgData) {
   }
   return out;
 }
-
-// ── Contrast stretch with percentile clipping + gamma ──
 function contrastStretch(imgData, clipPct, gamma) {
   const out = cloneImageData(imgData);
   const d = out.data;
@@ -377,39 +240,30 @@ function contrastStretch(imgData, clipPct, gamma) {
   const hi = vals[Math.floor(vals.length * (100 - clipPct) / 100)] || 255;
   const range = hi - lo || 1;
   for (let i = 0; i < d.length; i += 4) {
-    let v = (d[i] - lo) / range;
-    v = Math.max(0, Math.min(1, v));
+    let v = Math.max(0, Math.min(1, (d[i] - lo) / range));
     v = Math.pow(v, gamma) * 255;
     d[i] = d[i+1] = d[i+2] = v;
   }
   return out;
 }
-
-// ── Otsu binarization ──
 function otsuThreshold(imgData) {
   const d = imgData.data;
   const hist = new Array(256).fill(0);
   const total = d.length / 4;
-  for (let i = 0; i < d.length; i += 4) hist[d[i]]++;
-
+  for (let i = 0; i < d.length; i += 4) hist[Math.round(d[i])]++;
   let sum = 0;
   for (let i = 0; i < 256; i++) sum += i * hist[i];
-
-  let sumB = 0, wB = 0, maxVar = 0, threshold = 0;
+  let sumB = 0, wB = 0, maxVar = 0, threshold = 128;
   for (let t = 0; t < 256; t++) {
-    wB += hist[t];
-    if (wB === 0) continue;
-    const wF = total - wB;
-    if (wF === 0) break;
+    wB += hist[t]; if (wB === 0) continue;
+    const wF = total - wB; if (wF === 0) break;
     sumB += t * hist[t];
-    const mB = sumB / wB;
-    const mF = (sum - sumB) / wF;
-    const variance = wB * wF * (mB - mF) * (mB - mF);
-    if (variance > maxVar) { maxVar = variance; threshold = t; }
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > maxVar) { maxVar = v; threshold = t; }
   }
   return threshold;
 }
-
 function binarize(imgData, threshold) {
   const out = cloneImageData(imgData);
   const d = out.data;
@@ -419,30 +273,37 @@ function binarize(imgData, threshold) {
   }
   return out;
 }
-
-// ── Global processing pipeline ──
+function invertImageData(imgData) {
+  const out = cloneImageData(imgData);
+  const d = out.data;
+  for (let i = 0; i < d.length; i += 4) { d[i] = 255-d[i]; d[i+1] = 255-d[i+1]; d[i+2] = 255-d[i+2]; }
+  return out;
+}
 function globalProcess(imgData) {
   const gray = toGrayscale(imgData);
   const stretched = contrastStretch(gray, params.clip, params.gamma);
-  const thresh = otsuThreshold(stretched);
-  return binarize(stretched, thresh);
+  return binarize(stretched, otsuThreshold(stretched));
 }
 
-// ── Vertical projection histogram ──
-function verticalProjection(grayImgData) {
-  const { width, height, data } = grayImgData;
-  const proj = new Float64Array(width);
-  for (let x = 0; x < width; x++) {
-    let sum = 0;
-    for (let y = 0; y < height; y++) {
-      sum += 255 - data[(y * width + x) * 4]; // invert: dark pixels = high value
+// === POLARITY DETECTION ===
+// Determines if region is dark-on-light or light-on-dark
+// by comparing border (background) luminance vs center
+function detectPolarity(grayImgData) {
+  const { width: W, height: H, data: d } = grayImgData;
+  let borderSum = 0, borderN = 0, centerSum = 0, centerN = 0;
+  const mx = Math.max(2, Math.round(W * 0.15));
+  const my = Math.max(2, Math.round(H * 0.15));
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const v = d[(y * W + x) * 4];
+      if (x < mx || x >= W-mx || y < my || y >= H-my) { borderSum += v; borderN++; }
+      else { centerSum += v; centerN++; }
     }
-    proj[x] = sum / height; // average darkness per column
   }
-  return proj;
+  return (borderSum/(borderN||1)) < (centerSum/(centerN||1)) ? 'light-on-dark' : 'dark-on-light';
 }
 
-// ── Smooth projection ──
+// === SMOOTHING ===
 function smooth(arr, kernelSize) {
   const half = Math.floor(kernelSize / 2);
   const out = new Float64Array(arr.length);
@@ -457,131 +318,220 @@ function smooth(arr, kernelSize) {
   return out;
 }
 
-// ── Find digit boundaries from projection ──
-function findDigitBoundaries(proj, minGap) {
-  // Adaptive threshold: use the mean of the projection
-  const mean = proj.reduce((a, b) => a + b, 0) / proj.length;
-  // Mark columns as "ink" if above a fraction of mean
-  const threshold = mean * 0.35;
-
-  const isInk = proj.map(v => v > threshold);
-
-  // Find contiguous ink runs
-  const runs = [];
-  let inRun = false, start = 0;
-  for (let i = 0; i < isInk.length; i++) {
-    if (isInk[i] && !inRun) { start = i; inRun = true; }
-    if (!isInk[i] && inRun) { runs.push([start, i - 1]); inRun = false; }
+// === VERTICAL PROJECTION ===
+function verticalProjection(grayImgData) {
+  const { width, height, data } = grayImgData;
+  const proj = new Float64Array(width);
+  for (let x = 0; x < width; x++) {
+    let sum = 0;
+    for (let y = 0; y < height; y++) sum += 255 - data[(y * width + x) * 4];
+    proj[x] = sum / height;
   }
-  if (inRun) runs.push([start, isInk.length - 1]);
-
-  if (runs.length === 0) return [];
-
-  // Merge runs that are too close (smaller than minGap)
-  const merged = [runs[0]];
-  for (let i = 1; i < runs.length; i++) {
-    const prev = merged[merged.length - 1];
-    if (runs[i][0] - prev[1] < minGap) {
-      prev[1] = runs[i][1]; // merge
-    } else {
-      merged.push(runs[i]);
-    }
-  }
-
-  // Filter out very narrow runs (likely noise) — less than 1/4 of median width
-  const widths = merged.map(r => r[1] - r[0] + 1);
-  const sortedWidths = [...widths].sort((a, b) => a - b);
-  const medianWidth = sortedWidths[Math.floor(sortedWidths.length / 2)];
-  const minWidth = Math.max(4, medianWidth * 0.25);
-
-  return merged.filter(r => (r[1] - r[0] + 1) >= minWidth);
+  return proj;
 }
 
-// ── Detect digit row (vertical extent) using horizontal projection ──
+// === HORIZONTAL PROJECTION -> find digit row ===
 function findDigitRow(grayImgData) {
   const { width, height, data } = grayImgData;
   const hProj = new Float64Array(height);
   for (let y = 0; y < height; y++) {
     let sum = 0;
-    for (let x = 0; x < width; x++) {
-      sum += 255 - data[(y * width + x) * 4];
-    }
+    for (let x = 0; x < width; x++) sum += 255 - data[(y * width + x) * 4];
     hProj[y] = sum / width;
   }
-
   const mean = hProj.reduce((a, b) => a + b, 0) / hProj.length;
-  const threshold = mean * 0.4;
-
-  // Find the tallest contiguous block of "ink" rows
-  let bestStart = 0, bestEnd = height - 1, bestLen = 0;
-  let inRun = false, start = 0;
+  const threshold = mean * 0.35;
+  let bestStart = 0, bestEnd = height-1, bestLen = 0, inRun = false, start = 0;
   for (let y = 0; y < height; y++) {
     if (hProj[y] > threshold && !inRun) { start = y; inRun = true; }
-    if ((hProj[y] <= threshold || y === height - 1) && inRun) {
-      const end = (hProj[y] > threshold) ? y : y - 1;
+    if ((hProj[y] <= threshold || y === height-1) && inRun) {
+      const end = hProj[y] > threshold ? y : y-1;
       const len = end - start + 1;
       if (len > bestLen) { bestStart = start; bestEnd = end; bestLen = len; }
       inRun = false;
     }
   }
-
-  // Add small padding
   const pad = Math.max(2, Math.round(bestLen * 0.05));
-  return [Math.max(0, bestStart - pad), Math.min(height - 1, bestEnd + pad)];
+  return [Math.max(0, bestStart-pad), Math.min(height-1, bestEnd+pad)];
 }
 
-// ── Per-digit processing ──
-function processDigits(grayImgData, boundaries, rowTop, rowBottom) {
-  const cellHeight = rowBottom - rowTop + 1;
-  const rawCells = [];
-  const procCells = [];
-  const thresholds = [];
+// === LOCAL EXTREMA FINDER ===
+// Finds sustained local min/max in the projection signal.
+// Uses a sliding window with stddev-based classification
+// instead of a global threshold.
+function findLocalExtrema(proj, expectedCellWidth) {
+  const N = proj.length;
+  const winSize = Math.max(5, Math.round(expectedCellWidth * 1.2));
+  const halfWin = Math.floor(winSize / 2);
+  const minPlateauLen = Math.max(3, Math.round(expectedCellWidth * 0.2));
 
-  // Add padding to each boundary
-  for (const [left, right] of boundaries) {
-    const padX = Math.max(1, Math.round((right - left) * 0.08));
-    const x0 = Math.max(0, left - padX);
-    const x1 = Math.min(grayImgData.width - 1, right + padX);
-    const cellWidth = x1 - x0 + 1;
+  const rawMin = [], rawMax = [];
+  for (let i = halfWin; i < N - halfWin; i++) {
+    const win = [];
+    for (let j = i - halfWin; j <= i + halfWin; j++) win.push(proj[j]);
+    const wMin = Math.min(...win);
+    const wMax = Math.max(...win);
+    const wMean = win.reduce((a, b) => a + b, 0) / win.length;
+    const wStd = Math.sqrt(win.reduce((a, b) => a + (b - wMean)**2, 0) / win.length) || 1;
 
-    const raw = cropImageData(grayImgData, x0, rowTop, cellWidth, cellHeight);
-    rawCells.push(raw);
-
-    // Local contrast stretch
-    const stretched = contrastStretch(raw, params.clip, params.gamma);
-    const thresh = otsuThreshold(stretched);
-    thresholds.push(thresh);
-    const bin = binarize(stretched, thresh);
-    procCells.push(bin);
+    if (proj[i] <= wMean - wStd * 0.3 && proj[i] <= wMin + wStd * 0.5) {
+      rawMin.push({ pos: i, value: proj[i] });
+    }
+    if (proj[i] >= wMean + wStd * 0.3 && proj[i] >= wMax - wStd * 0.5) {
+      rawMax.push({ pos: i, value: proj[i] });
+    }
   }
 
-  return { rawCells, procCells, thresholds };
+  function cluster(pts, type) {
+    if (!pts.length) return [];
+    const out = [];
+    let grp = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i].pos - pts[i-1].pos <= minPlateauLen) { grp.push(pts[i]); }
+      else {
+        out.push(type === 'min'
+          ? grp.reduce((a,b) => a.value < b.value ? a : b)
+          : grp.reduce((a,b) => a.value > b.value ? a : b));
+        grp = [pts[i]];
+      }
+    }
+    out.push(type === 'min'
+      ? grp.reduce((a,b) => a.value < b.value ? a : b)
+      : grp.reduce((a,b) => a.value > b.value ? a : b));
+    return out;
+  }
+
+  return { minima: cluster(rawMin, 'min'), maxima: cluster(rawMax, 'max') };
 }
 
-// ── Reassemble processed cells into a single image ──
-function reassemble(procCells, boundaries, grayImgData, rowTop, rowBottom) {
-  const outWidth = grayImgData.width;
-  const outHeight = rowBottom - rowTop + 1;
-  const out = new ImageData(outWidth, outHeight);
-  // Fill with white
-  out.data.fill(255);
+// === METER TYPE DETECTION ===
+// Rotary/mechanical: wide gaps (~gap = digit width), gapFraction > 0.3
+// 7-segment: tight kerning (gap << digit), gapFraction < 0.3
+function detectMeterType(proj, imageWidth, maxDigits) {
+  const N = proj.length;
+  const mean = proj.reduce((a, b) => a + b, 0) / N;
+  const centered = proj.map(v => v - mean);
 
+  const minLag = Math.round(imageWidth / (maxDigits * 3));
+  const maxLag = Math.round(imageWidth / 2);
+  let bestLag = minLag, bestCorr = -Infinity;
+
+  for (let lag = minLag; lag <= Math.min(maxLag, Math.floor(N/2)); lag++) {
+    let sum = 0;
+    for (let i = 0; i < N - lag; i++) sum += centered[i] * centered[i + lag];
+    const corr = sum / (N - lag);
+    if (corr > bestCorr) { bestCorr = corr; bestLag = lag; }
+  }
+
+  const period = bestLag;
+  const periodSamples = [];
+  for (let s = 0; s + period <= N; s += period) {
+    const slice = [];
+    for (let i = s; i < s + period && i < N; i++) slice.push(proj[i]);
+    const sMax = Math.max(...slice), sMin = Math.min(...slice);
+    const mid = (sMax + sMin) / 2;
+    periodSamples.push(slice.filter(v => v < mid).length / slice.length);
+  }
+  const gapFraction = periodSamples.reduce((a,b) => a+b, 0) / (periodSamples.length || 1);
+
+  return { type: gapFraction > 0.3 ? 'rotary' : 'seven-seg', period, gapFraction };
+}
+
+// === PEAK-BASED DIGIT SEGMENTATION ===
+// Find peaks (digit centers) in the projection, then derive
+// boundaries as midpoints between peaks. This works for both
+// polarities and both meter types.
+function segmentDigits(proj, imageWidth, maxDigits, meterType) {
+  const expectedCellWidth = meterType.type === 'rotary'
+    ? imageWidth / (2 * maxDigits - 1)
+    : imageWidth / maxDigits;
+
+  const { maxima } = findLocalExtrema(proj, expectedCellWidth);
+  let peaks = maxima.map(m => m.pos);
+
+  // Filter peaks too close together
+  const minPeakDist = expectedCellWidth * 0.4;
+  if (peaks.length > 1) {
+    const filtered = [peaks[0]];
+    for (let i = 1; i < peaks.length; i++) {
+      if (peaks[i] - filtered[filtered.length-1] >= minPeakDist) {
+        filtered.push(peaks[i]);
+      } else {
+        if (proj[peaks[i]] > proj[filtered[filtered.length-1]]) filtered[filtered.length-1] = peaks[i];
+      }
+    }
+    peaks = filtered;
+  }
+
+  // Cap at maxDigits (keep strongest)
+  if (peaks.length > maxDigits) {
+    peaks = peaks.map(p => ({pos:p, val:proj[p]}))
+      .sort((a,b) => b.val - a.val).slice(0, maxDigits)
+      .sort((a,b) => a.pos - b.pos).map(r => r.pos);
+  }
+
+  if (!peaks.length) return [];
+
+  // Boundaries = midpoints between adjacent peaks, bookended by image edges
+  const boundaries = [];
+  for (let i = 0; i < peaks.length; i++) {
+    const left = i === 0 ? 0 : Math.round((peaks[i-1] + peaks[i]) / 2);
+    const right = i === peaks.length-1 ? imageWidth-1 : Math.round((peaks[i] + peaks[i+1]) / 2) - 1;
+    boundaries.push([left, right]);
+  }
+
+  // Filter out very narrow or very wide segments
+  const widths = boundaries.map(b => b[1]-b[0]+1);
+  const medW = [...widths].sort((a,b) => a-b)[Math.floor(widths.length/2)];
+  return boundaries.filter(b => {
+    const w = b[1]-b[0]+1;
+    return w >= medW * 0.3 && w <= medW * 2.5;
+  });
+}
+
+// === PER-DIGIT ADAPTIVE PROCESSING ===
+function processDigits(grayImgData, boundaries, rowTop, rowBottom) {
+  const cellHeight = rowBottom - rowTop + 1;
+  const rawCells = [], procCells = [], thresholds = [], polarities = [];
+
+  for (const [left, right] of boundaries) {
+    const padX = Math.max(1, Math.round((right-left) * 0.05));
+    const x0 = Math.max(0, left - padX);
+    const x1 = Math.min(grayImgData.width-1, right + padX);
+    const raw = cropImageData(grayImgData, x0, rowTop, x1-x0+1, cellHeight);
+    rawCells.push(raw);
+
+    const polarity = detectPolarity(raw);
+    polarities.push(polarity);
+
+    // Normalize to dark-on-light for processing
+    let work = polarity === 'light-on-dark' ? invertImageData(raw) : cloneImageData(raw);
+    const stretched = contrastStretch(work, params.clip, params.gamma);
+    const thresh = otsuThreshold(stretched);
+    thresholds.push(thresh);
+    procCells.push(binarize(stretched, thresh));
+  }
+
+  return { rawCells, procCells, thresholds, polarities };
+}
+
+// === REASSEMBLE ===
+function reassemble(procCells, boundaries, totalWidth, rowHeight) {
+  const out = new ImageData(totalWidth, rowHeight);
+  out.data.fill(255);
   for (let i = 0; i < procCells.length; i++) {
     const cell = procCells[i];
     const [left, right] = boundaries[i];
-    const padX = Math.max(1, Math.round((right - left) * 0.08));
+    const padX = Math.max(1, Math.round((right-left) * 0.05));
     const x0 = Math.max(0, left - padX);
-
-    for (let y = 0; y < cell.height; y++) {
+    for (let y = 0; y < cell.height && y < rowHeight; y++) {
       for (let x = 0; x < cell.width; x++) {
-        const srcIdx = (y * cell.width + x) * 4;
         const dstX = x0 + x;
-        if (dstX < outWidth) {
-          const dstIdx = (y * outWidth + dstX) * 4;
-          out.data[dstIdx] = cell.data[srcIdx];
-          out.data[dstIdx + 1] = cell.data[srcIdx + 1];
-          out.data[dstIdx + 2] = cell.data[srcIdx + 2];
-          out.data[dstIdx + 3] = 255;
+        if (dstX < totalWidth) {
+          const si = (y * cell.width + x) * 4;
+          const di = (y * totalWidth + dstX) * 4;
+          out.data[di] = cell.data[si]; out.data[di+1] = cell.data[si+1];
+          out.data[di+2] = cell.data[si+2]; out.data[di+3] = 255;
         }
       }
     }
@@ -589,328 +539,250 @@ function reassemble(procCells, boundaries, grayImgData, rowTop, rowBottom) {
   return out;
 }
 
-// ── Draw histogram ──
-function drawHistogram(canvas, proj, boundaries) {
-  const W = canvas.width = canvas.parentElement.clientWidth * 2;
-  const H = canvas.height = 160;
+// === DRAWING ===
+function drawHistogram(canvas, proj, boundaries, extrema) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const dW = canvas.clientWidth || 400;
+  const dH = 100;
+  canvas.width = dW * dpr; canvas.height = dH * dpr;
+  canvas.style.height = dH + 'px';
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
+  ctx.scale(dpr, dpr); ctx.clearRect(0, 0, dW, dH);
 
   const max = Math.max(...proj) || 1;
-  const scaleX = W / proj.length;
+  const sx = dW / proj.length;
 
-  // Bars
   for (let i = 0; i < proj.length; i++) {
-    const barH = (proj[i] / max) * (H - 10);
-    ctx.fillStyle = 'rgba(0,210,255,0.5)';
-    ctx.fillRect(i * scaleX, H - barH, Math.max(1, scaleX), barH);
+    const bH = (proj[i] / max) * (dH - 6);
+    ctx.fillStyle = 'rgba(0,210,255,0.4)';
+    ctx.fillRect(i*sx, dH-bH, Math.max(1,sx), bH);
   }
-
-  // Boundary lines
-  ctx.strokeStyle = '#e94560';
-  ctx.lineWidth = 2;
-  for (const [left, right] of boundaries) {
-    ctx.beginPath();
-    ctx.moveTo(left * scaleX, 0); ctx.lineTo(left * scaleX, H);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo((right + 1) * scaleX, 0); ctx.lineTo((right + 1) * scaleX, H);
-    ctx.stroke();
+  ctx.strokeStyle = '#e94560'; ctx.lineWidth = 1;
+  for (const [l,r] of boundaries) {
+    ctx.beginPath(); ctx.moveTo(l*sx,0); ctx.lineTo(l*sx,dH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo((r+1)*sx,0); ctx.lineTo((r+1)*sx,dH); ctx.stroke();
+  }
+  ctx.fillStyle = '#53d769';
+  for (const m of extrema.maxima) {
+    ctx.beginPath(); ctx.arc(m.pos*sx, dH-(m.value/max)*(dH-6), 3, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle = '#fc3';
+  for (const m of extrema.minima) {
+    ctx.beginPath(); ctx.arc(m.pos*sx, dH-(m.value/max)*(dH-6), 3, 0, Math.PI*2); ctx.fill();
   }
 }
 
-// ── Draw boundaries overlay ──
 function drawBoundaries(canvas, imgData, boundaries, rowTop, rowBottom) {
   imageDataToCanvas(imgData, canvas);
   const ctx = canvas.getContext('2d');
-
-  // Row band
   ctx.fillStyle = 'rgba(0,210,255,0.1)';
-  ctx.fillRect(0, rowTop, imgData.width, rowBottom - rowTop + 1);
-
-  // Column lines
-  ctx.strokeStyle = 'rgba(233,69,96,0.8)';
+  ctx.fillRect(0, rowTop, imgData.width, rowBottom-rowTop+1);
   ctx.lineWidth = 1;
-  for (const [left, right] of boundaries) {
-    ctx.beginPath();
-    ctx.moveTo(left, 0); ctx.lineTo(left, imgData.height);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(right + 1, 0); ctx.lineTo(right + 1, imgData.height);
-    ctx.stroke();
+  for (const [l,r] of boundaries) {
+    ctx.strokeStyle = 'rgba(233,69,96,0.8)';
+    ctx.beginPath(); ctx.moveTo(l,0); ctx.lineTo(l,imgData.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r+1,0); ctx.lineTo(r+1,imgData.height); ctx.stroke();
   }
-
-  // Horizontal row lines
-  ctx.strokeStyle = 'rgba(0,210,255,0.6)';
-  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = 'rgba(0,210,255,0.6)'; ctx.setLineDash([4,4]);
   ctx.beginPath();
-  ctx.moveTo(0, rowTop); ctx.lineTo(imgData.width, rowTop);
-  ctx.moveTo(0, rowBottom); ctx.lineTo(imgData.width, rowBottom);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.moveTo(0,rowTop); ctx.lineTo(imgData.width,rowTop);
+  ctx.moveTo(0,rowBottom); ctx.lineTo(imgData.width,rowBottom);
+  ctx.stroke(); ctx.setLineDash([]);
 }
 
-// ── Render digit cells ──
-function renderDigitCells(containerId, cells, thresholds) {
+function renderDigitCells(containerId, cells, thresholds, polarities) {
   const container = $(containerId);
   container.innerHTML = '';
   cells.forEach((cell, i) => {
-    const div = document.createElement('div');
-    div.className = 'digit-cell';
-    const c = document.createElement('canvas');
-    imageDataToCanvas(cell, c);
-    div.appendChild(c);
-    const lbl = document.createElement('div');
-    lbl.className = 'label';
-    lbl.textContent = `#${i + 1}`;
-    div.appendChild(lbl);
-    if (thresholds) {
-      const t = document.createElement('div');
-      t.className = 'thresh';
-      t.textContent = `T=${thresholds[i]}`;
-      div.appendChild(t);
-    }
+    const div = document.createElement('div'); div.className = 'digit-cell';
+    const c = document.createElement('canvas'); imageDataToCanvas(cell, c); div.appendChild(c);
+    const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = '#'+(i+1); div.appendChild(lbl);
+    if (thresholds) { const t = document.createElement('div'); t.className = 'thresh'; t.textContent = 'T='+thresholds[i]; div.appendChild(t); }
+    if (polarities) { const p = document.createElement('div'); p.className = 'polarity'; p.textContent = polarities[i]==='light-on-dark' ? '\u25D0 inv' : '\u25D1 norm'; div.appendChild(p); }
     container.appendChild(div);
   });
 }
 
-// ── Render confidence bars ──
 function renderConfidence(containerId, result) {
-  const container = $(containerId);
-  container.innerHTML = '';
-  if (!result || !result.data || !result.data.symbols) return;
+  const container = $(containerId); container.innerHTML = '';
+  if (!result?.data?.symbols) return;
   for (const sym of result.data.symbols) {
-    const div = document.createElement('div');
-    div.className = 'conf-char';
-    const wrap = document.createElement('div');
-    wrap.className = 'bar-wrap';
-    const fill = document.createElement('div');
-    fill.className = 'bar-fill';
+    const div = document.createElement('div'); div.className = 'conf-char';
+    const wrap = document.createElement('div'); wrap.className = 'bar-wrap';
+    const fill = document.createElement('div'); fill.className = 'bar-fill';
     const conf = sym.confidence / 100;
-    fill.style.height = (conf * 100) + '%';
+    fill.style.height = (conf*100)+'%';
     fill.style.background = conf > 0.8 ? 'var(--success)' : conf > 0.5 ? 'var(--warn)' : 'var(--accent)';
-    wrap.appendChild(fill);
-    div.appendChild(wrap);
-    const ch = document.createElement('div');
-    ch.className = 'ch';
-    ch.textContent = sym.text;
-    div.appendChild(ch);
-    container.appendChild(div);
+    wrap.appendChild(fill); div.appendChild(wrap);
+    const ch = document.createElement('div'); ch.className = 'ch'; ch.textContent = sym.text;
+    div.appendChild(ch); container.appendChild(div);
   }
 }
 
-// ── Tesseract OCR ──
+// === TESSERACT ===
 async function runOCR(imageData) {
-  // Convert ImageData to blob via canvas
   const c = document.createElement('canvas');
   imageDataToCanvas(imageData, c);
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-
   const worker = await Tesseract.createWorker('eng', 1, {
     workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
     corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
   });
-
-  await worker.setParameters({
-    tessedit_char_whitelist: '0123456789.',
-    tessedit_pageseg_mode: '7',
-  });
-
+  await worker.setParameters({ tessedit_char_whitelist: '0123456789.', tessedit_pageseg_mode: '7' });
   const result = await worker.recognize(blob);
   await worker.terminate();
   return result;
 }
 
-// ── Main pipeline ──
+// === MAIN PIPELINE ===
 async function runPipeline() {
   if (!sourceImageData) return;
   runBtn.disabled = true;
-  setStatus('Processing…', 'busy');
+  setStatus('Processing...', 'busy');
 
   try {
-    // Show original
     showCard('originalCard');
     imageDataToCanvas(sourceImageData, $('originalCanvas'));
 
-    // Grayscale
-    setStatus('Converting to grayscale…', 'busy');
+    setStatus('Grayscale + detect polarity...', 'busy');
     const gray = toGrayscale(sourceImageData);
+    const overallPolarity = detectPolarity(gray);
 
-    // Vertical projection
-    setStatus('Computing vertical projection…', 'busy');
-    const rawProj = verticalProjection(gray);
+    // For projection we need "ink = high values". If light-on-dark, invert for projection.
+    const projGray = overallPolarity === 'light-on-dark' ? invertImageData(gray) : gray;
+
+    const [rowTop, rowBottom] = findDigitRow(projGray);
+    const rowSlice = cropImageData(projGray, 0, rowTop, projGray.width, rowBottom-rowTop+1);
+    const rawProj = verticalProjection(rowSlice);
     const smoothedProj = smooth(rawProj, params.kernel);
 
-    // Find digit row
-    const [rowTop, rowBottom] = findDigitRow(gray);
+    setStatus('Detecting meter type...', 'busy');
+    const meterType = detectMeterType(smoothedProj, gray.width, params.maxDigits);
 
-    // Compute projection only on digit row for better segmentation
-    const rowGray = cropImageData(gray, 0, rowTop, gray.width, rowBottom - rowTop + 1);
-    const rowProj = verticalProjection(rowGray);
-    const rowSmoothed = smooth(rowProj, params.kernel);
+    const badge = $('modeBadge');
+    badge.textContent = meterType.type === 'rotary' ? 'ROTARY' : '7-SEG';
+    badge.className = 'mode-badge ' + (meterType.type === 'rotary' ? 'rotary' : 'seven-seg');
 
-    // Find boundaries
-    const boundaries = findDigitBoundaries(rowSmoothed, params.minGap);
-    setStatus(`Found ${boundaries.length} digit columns`, 'busy');
+    const expectedCellWidth = meterType.type === 'rotary'
+      ? gray.width / (2 * params.maxDigits - 1)
+      : gray.width / params.maxDigits;
+    const extrema = findLocalExtrema(smoothedProj, expectedCellWidth);
 
-    // Draw histogram
+    setStatus('Segmenting digits...', 'busy');
+    const boundaries = segmentDigits(smoothedProj, gray.width, params.maxDigits, meterType);
+
     showCard('histCard');
-    drawHistogram($('histogramCanvas'), rowSmoothed, boundaries);
+    drawHistogram($('histogramCanvas'), smoothedProj, boundaries, extrema);
     drawBoundaries($('boundaryCanvas'), gray, boundaries, rowTop, rowBottom);
+    $('segInfo').innerHTML =
+      '<strong>Type:</strong> ' + meterType.type +
+      ' &middot; <strong>Period:</strong> ' + meterType.period + 'px' +
+      ' &middot; <strong>Gap:</strong> ' + (meterType.gapFraction*100).toFixed(0) + '%' +
+      ' &middot; <strong>Polarity:</strong> ' + overallPolarity +
+      ' &middot; <strong>Digits:</strong> ' + boundaries.length +
+      ' &middot; <strong>Row:</strong> ' + rowTop + '\u2013' + rowBottom;
 
-    // Per-digit processing
-    setStatus('Processing individual digits…', 'busy');
-    const { rawCells, procCells, thresholds } = processDigits(gray, boundaries, rowTop, rowBottom);
+    setStatus('Processing ' + boundaries.length + ' digits...', 'busy');
+    const { rawCells, procCells, thresholds, polarities } = processDigits(gray, boundaries, rowTop, rowBottom);
 
     showCard('digitsCard');
-    renderDigitCells('rawDigits', rawCells);
-    renderDigitCells('procDigits', procCells, thresholds);
+    renderDigitCells('rawDigits', rawCells, null, polarities);
+    renderDigitCells('procDigits', procCells, thresholds, polarities);
 
-    // Reassemble
-    setStatus('Reassembling…', 'busy');
-    const perDigitImg = reassemble(procCells, boundaries, gray, rowTop, rowBottom);
-
-    // Global process for comparison
-    const globalGray = cropImageData(gray, 0, rowTop, gray.width, rowBottom - rowTop + 1);
-    const globalProcessed = globalProcess(cropImageData(sourceImageData, 0, rowTop, gray.width, rowBottom - rowTop + 1));
+    setStatus('Reassembling...', 'busy');
+    const rowHeight = rowBottom - rowTop + 1;
+    const perDigitImg = reassemble(procCells, boundaries, gray.width, rowHeight);
+    const globalCrop = cropImageData(sourceImageData, 0, rowTop, gray.width, rowHeight);
+    const globalProcessed = globalProcess(globalCrop);
 
     showCard('reassembleCard');
     imageDataToCanvas(globalProcessed, $('globalCanvas'));
     imageDataToCanvas(perDigitImg, $('perdigitCanvas'));
 
-    // OCR
-    setStatus('Running Tesseract on global image…', 'busy');
+    setStatus('Running Tesseract (global)...', 'busy');
     const globalOCR = await runOCR(globalProcessed);
     $('globalResult').textContent = globalOCR.data.text.trim() || '(nothing)';
     renderConfidence('globalConf', globalOCR);
 
-    setStatus('Running Tesseract on per-digit image…', 'busy');
+    setStatus('Running Tesseract (per-digit)...', 'busy');
     const perDigitOCR = await runOCR(perDigitImg);
     $('perdigitResult').textContent = perDigitOCR.data.text.trim() || '(nothing)';
     renderConfidence('perdigitConf', perDigitOCR);
 
     showCard('resultCard');
-    setStatus('Done ✓', 'done');
+    setStatus('Done', 'done');
   } catch (err) {
     setStatus('Error: ' + err.message, '');
     console.error(err);
-  } finally {
-    runBtn.disabled = false;
-  }
+  } finally { runBtn.disabled = false; }
 }
 
-// ── Event wiring ──
+// === EVENTS ===
 fileInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  setStatus('Loading image…', 'busy');
+  const file = e.target.files[0]; if (!file) return;
+  setStatus('Loading...', 'busy');
   try {
     sourceImageData = await loadImageFile(file);
-    showCard('paramsCard');
-    runBtn.disabled = false;
-    setStatus(`Loaded ${sourceImageData.width}×${sourceImageData.height}`, '');
-    // Auto-run
+    showCard('paramsCard'); runBtn.disabled = false;
+    setStatus('Loaded ' + sourceImageData.width + 'x' + sourceImageData.height, '');
     runPipeline();
-  } catch (err) {
-    setStatus('Failed to load image: ' + err.message, '');
-  }
+  } catch (err) { setStatus('Failed: ' + err.message, ''); }
 });
-
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (file) {
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    fileInput.files = dt.files;
-    fileInput.dispatchEvent(new Event('change'));
-  }
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) { const dt = new DataTransfer(); dt.items.add(f); fileInput.files = dt.files; fileInput.dispatchEvent(new Event('change')); }
 });
-
-// Paste support
 document.addEventListener('paste', e => {
-  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
-  if (item) {
-    const file = item.getAsFile();
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    fileInput.files = dt.files;
-    fileInput.dispatchEvent(new Event('change'));
-  }
+  const item = [...(e.clipboardData?.items||[])].find(i => i.type.startsWith('image/'));
+  if (item) { const dt = new DataTransfer(); dt.items.add(item.getAsFile()); fileInput.files = dt.files; fileInput.dispatchEvent(new Event('change')); }
 });
-
-// Parameter sliders
-for (const [slider, valSpan, key, parse] of [
-  ['gammaSlider', 'gammaVal', 'gamma', parseFloat],
-  ['clipSlider', 'clipVal', 'clip', parseFloat],
-  ['gapSlider', 'gapVal', 'minGap', parseInt],
-  ['kernelSlider', 'kernelVal', 'kernel', parseInt],
-]) {
-  $(slider).addEventListener('input', () => {
-    const v = parse($(slider).value);
-    params[key] = v;
-    $(valSpan).textContent = v;
-  });
-}
+for (const [s,v,k,p] of [
+  ['gammaSlider','gammaVal','gamma',parseFloat],
+  ['clipSlider','clipVal','clip',parseFloat],
+  ['maxDigitsSlider','maxDigitsVal','maxDigits',parseInt],
+  ['kernelSlider','kernelVal','kernel',parseInt],
+]) { $(s).addEventListener('input', () => { params[k] = p($(s).value); $(v).textContent = params[k]; }); }
 
 runBtn.addEventListener('click', runPipeline);
 
-// Toggle before/after
 document.querySelectorAll('#digitsCard .toggle-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     btn.classList.toggle('active');
-    const show = btn.dataset.show;
-    const target = show === 'before' ? $('digitsBefore') : $('digitsAfter');
-    target.classList.toggle('hidden', !btn.classList.contains('active'));
+    (btn.dataset.show === 'before' ? $('digitsBefore') : $('digitsAfter')).classList.toggle('hidden', !btn.classList.contains('active'));
   });
 });
 
-// ── Load bundled test images ──
+// === SAMPLES ===
 async function loadSampleImage(path, name) {
-  setStatus(`Loading ${name}…`, 'busy');
+  setStatus('Loading ' + name + '...', 'busy');
   try {
-    const resp = await fetch(path);
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-      img.src = url;
-    });
+    const resp = await fetch(path); const blob = await resp.blob();
+    const url = URL.createObjectURL(blob); const img = new Image();
+    await new Promise((res,rej) => { img.onload = res; img.onerror = rej; img.src = url; });
     const c = document.createElement('canvas');
-    c.width = img.naturalWidth;
-    c.height = img.naturalHeight;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    sourceImageData = ctx.getImageData(0, 0, c.width, c.height);
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    c.getContext('2d').drawImage(img, 0, 0);
+    sourceImageData = c.getContext('2d').getImageData(0, 0, c.width, c.height);
     URL.revokeObjectURL(url);
-    showCard('paramsCard');
-    runBtn.disabled = false;
-    setStatus(`Loaded ${sourceImageData.width}×${sourceImageData.height}`, '');
+    showCard('paramsCard'); runBtn.disabled = false;
+    setStatus('Loaded ' + sourceImageData.width + 'x' + sourceImageData.height, '');
     runPipeline();
-  } catch (err) {
-    setStatus('Failed to load sample: ' + err.message, '');
-  }
+  } catch (err) { setStatus('Failed: ' + err.message, ''); }
 }
 
-// Sample images co-located in same directory
-const sampleFiles = [
-  { path: 'IMG_6796.jpeg', name: '① Shadow right' },
-  { path: 'IMG_6795.jpeg', name: '② Low contrast' },
-  { path: 'IMG_6794.jpeg', name: '③ Gradient' },
-];
-
-const sampleContainer = $('sampleBtns');
-sampleFiles.forEach(s => {
+[
+  { path: 'IMG_6796.jpeg', name: '\u2460 Shadow R' },
+  { path: 'IMG_6795.jpeg', name: '\u2461 Low contrast' },
+  { path: 'IMG_6794.jpeg', name: '\u2462 Gradient' },
+  { path: 'IMG_6792.jpeg', name: '\u2463 7-segment' },
+].forEach(s => {
   const btn = document.createElement('button');
-  btn.className = 'toggle-btn';
-  btn.textContent = s.name;
+  btn.className = 'toggle-btn'; btn.textContent = s.name;
   btn.addEventListener('click', () => loadSampleImage(s.path, s.name));
-  sampleContainer.appendChild(btn);
+  $('sampleBtns').appendChild(btn);
 });
 </script>
 

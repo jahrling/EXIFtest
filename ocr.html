@@ -86,36 +86,19 @@
     .icon-btn.danger { border-color: rgba(248,113,113,0.2); color: var(--warn); }
     .icon-btn.danger:active { background: var(--warn-dim); }
 
-    /* ─── PHASE INDICATOR ─── */
-    .phase-bar {
+    /* ─── INSTRUCTION BAR (replaces phase indicator) ─── */
+    .instruction-bar {
         flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 16px;
+        padding: 6px 16px;
         background: var(--bg-card);
         border-bottom: 1px solid var(--border);
-        font-size: 12px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--accent);
+        text-align: center;
+        display: none;
     }
-    .phase-step {
-        display: flex; align-items: center; gap: 5px;
-        color: var(--text-muted);
-        transition: color 0.3s;
-    }
-    .phase-step.active { color: var(--accent); }
-    .phase-step.done { color: var(--text-secondary); }
-    .phase-dot {
-        width: 7px; height: 7px;
-        border-radius: 50%;
-        background: var(--text-muted);
-        transition: background 0.3s, box-shadow 0.3s;
-    }
-    .phase-step.active .phase-dot {
-        background: var(--accent);
-        box-shadow: 0 0 8px var(--accent-glow);
-    }
-    .phase-step.done .phase-dot { background: var(--text-secondary); }
-    .phase-sep { color: var(--text-muted); font-size: 10px; }
+    .instruction-bar.visible { display: block; }
 
     /* ─── CANVAS / IMAGE AREA ─── */
     .canvas-area {
@@ -527,25 +510,6 @@
     }
     .locked-badge.visible { display: block; }
 
-    /* Swipe instructions */
-    .swipe-instructions {
-        position: absolute;
-        bottom: 60px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0,0,0,0.65);
-        backdrop-filter: blur(8px);
-        color: var(--accent);
-        font-size: 13px;
-        font-weight: 500;
-        padding: 8px 18px;
-        border-radius: 20px;
-        z-index: 15;
-        display: none;
-        white-space: nowrap;
-    }
-    .swipe-instructions.visible { display: block; }
-
     /* Hidden file input */
     #fileInput { display: none; }
 </style>
@@ -567,28 +531,8 @@
         </header>
 
 ```
-    <!-- Phase indicator -->
-    <div class="phase-bar">
-        <div class="phase-step active" id="phase1">
-            <div class="phase-dot"></div>
-            <span>Upload</span>
-        </div>
-        <span class="phase-sep">›</span>
-        <div class="phase-step" id="phase2">
-            <div class="phase-dot"></div>
-            <span>Adjust</span>
-        </div>
-        <span class="phase-sep">›</span>
-        <div class="phase-step" id="phase3">
-            <div class="phase-dot"></div>
-            <span>Lock</span>
-        </div>
-        <span class="phase-sep">›</span>
-        <div class="phase-step" id="phase4">
-            <div class="phase-dot"></div>
-            <span>Swipe</span>
-        </div>
-    </div>
+    <!-- Instruction bar -->
+    <div class="instruction-bar" id="instructionBar"></div>
 
     <!-- Canvas / Image area -->
     <div class="canvas-area" id="canvasArea">
@@ -623,9 +567,6 @@
 
         <!-- Locked badge -->
         <div class="locked-badge" id="lockedBadge">🔒 LOCKED</div>
-
-        <!-- Swipe instructions -->
-        <div class="swipe-instructions" id="swipeInstructions">Swipe across the numbers</div>
     </div>
 
     <!-- Lock / Unlock bar -->
@@ -719,7 +660,6 @@
     const overlayCanvas  = document.getElementById('overlayCanvas');
     const ovCtx          = overlayCanvas.getContext('2d');
     const lockedBadge    = document.getElementById('lockedBadge');
-    const swipeInstr     = document.getElementById('swipeInstructions');
     const lockBar        = document.getElementById('lockBar');
     const lockBtn        = document.getElementById('lockBtn');
     const statusText     = document.getElementById('statusText');
@@ -737,52 +677,41 @@
     const ocrValue       = document.getElementById('ocrValue');
     const ocrConfidence  = document.getElementById('ocrConfidence');
 
-    const phases = [
-        document.getElementById('phase1'),
-        document.getElementById('phase2'),
-        document.getElementById('phase3'),
-        document.getElementById('phase4')
-    ];
+    const instructionBar = document.getElementById('instructionBar');
 
     // ── Phase Management ──
     function setPhase(p) {
         currentPhase = p;
-        phases.forEach((el, i) => {
-            el.classList.remove('active', 'done');
-            if (i + 1 < p) el.classList.add('done');
-            else if (i + 1 === p) el.classList.add('active');
-        });
 
         // Phase 1: Upload
         uploadPrompt.classList.toggle('hidden', p !== 1);
         imageContainer.classList.toggle('hidden', p < 2);
+        instructionBar.classList.remove('visible');
 
         // Phase 2: Adjust
         rotateControls.classList.toggle('hidden', p !== 2);
         zoomHint.classList.toggle('hidden', p !== 2);
         lockBar.classList.toggle('visible', p === 2);
 
-        // Phase 3: Locked → auto-advance to 4
+        // Phase 3: Locked
         if (p === 3) {
             isLocked = true;
             lockedBadge.classList.add('visible');
             lockBar.classList.add('visible');
             lockBtn.textContent = '🔓 Unlock Image';
             lockBtn.className = 'lock-btn unlock';
-            swipeInstr.classList.add('visible');
+            instructionBar.textContent = 'Swipe across the numbers';
+            instructionBar.classList.add('visible');
             overlayCanvas.classList.add('active');
             resizeOverlay();
             headerSub.textContent = 'Swipe across the numbers';
             statusText.innerHTML = '<span class="accent">Locked</span> — swipe over the meter numbers';
-            // We treat 3 and 4 together; swipe is enabled once locked
-            setPhaseIndicator(4);
         }
 
         // Phase 2 status
         if (p === 2) {
             isLocked = false;
             lockedBadge.classList.remove('visible');
-            swipeInstr.classList.remove('visible');
             overlayCanvas.classList.remove('active');
             lockBtn.textContent = '🔒 Lock Image';
             lockBtn.className = 'lock-btn primary';
@@ -791,14 +720,6 @@
             bottomPanel.classList.remove('open');
             clearSwipe();
         }
-    }
-
-    function setPhaseIndicator(p) {
-        phases.forEach((el, i) => {
-            el.classList.remove('active', 'done');
-            if (i + 1 < p) el.classList.add('done');
-            else if (i + 1 === p) el.classList.add('active');
-        });
     }
 
     // ── File Upload ──
@@ -1265,6 +1186,7 @@
 
         bottomPanel.classList.add('open');
         document.getElementById('canvasArea').classList.add('shrunk');
+        instructionBar.classList.remove('visible');
         const corrDeg = Math.round(appliedCorrection * 10) / 10;
         const angleNote = Math.abs(corrDeg) > 0.3 ? ` · corrected ${corrDeg}°` : '';
         statusText.innerHTML = `Region captured${angleNote} — <span class="accent">preview below</span>`;
@@ -1424,7 +1346,7 @@
         isDragging = false;
         clearSwipe();
         lockedBadge.classList.remove('visible');
-        swipeInstr.classList.remove('visible');
+        instructionBar.classList.remove('visible');
         overlayCanvas.classList.remove('active');
         lockBar.classList.remove('visible');
         fileInput.value = '';

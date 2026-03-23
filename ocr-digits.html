@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Per-Digit OCR Test Harness</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #00d2ff;
+    --text: #eee;
+    --text-dim: #8892b0;
+    --mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --border: rgba(233,69,96,0.25);
+    --success: #53d769;
+    --warn: #fc3;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { font-size: 15px; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    padding: 1rem;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+  }
+  h1 span { color: var(--accent); }
+  .subtitle { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 1rem; }
+  h2 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent2);
+    margin: 1.25rem 0 0.5rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+/* Upload area */
+#dropZone {
+border: 2px dashed var(–accent);
+border-radius: 8px;
+padding: 2rem 1rem;
+text-align: center;
+cursor: pointer;
+transition: background 0.2s;
+position: relative;
+}
+#dropZone.dragover { background: rgba(233,69,96,0.1); }
+#dropZone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+#dropZone p { color: var(–text-dim); font-size: 0.85rem; }
+#dropZone p strong { color: var(–accent); }
+
+/* Parameters */
+.params {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 0.5rem;
+font-size: 0.8rem;
+}
+.params label { color: var(–text-dim); display: flex; flex-direction: column; gap: 0.2rem; }
+.params input[type=range] { width: 100%; accent-color: var(–accent); }
+.params .val { color: var(–accent2); font-family: var(–mono); font-size: 0.75rem; }
+
+/* Canvas displays */
+.img-row { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; }
+.img-row canvas, .img-row img { max-height: 120px; border: 1px solid var(–border); border-radius: 4px; flex-shrink: 0; }
+canvas.full-width { width: 100%; height: auto; display: block; border: 1px solid var(–border); border-radius: 4px; }
+
+/* Histogram */
+#histogramWrap { position: relative; }
+#histogramCanvas { width: 100%; height: 80px; display: block; }
+
+/* Digit cells */
+.digit-grid {
+display: grid;
+grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+gap: 0.4rem;
+}
+.digit-cell {
+background: var(–bg);
+border: 1px solid var(–border);
+border-radius: 4px;
+padding: 0.3rem;
+text-align: center;
+font-family: var(–mono);
+font-size: 0.7rem;
+}
+.digit-cell canvas { width: 100%; image-rendering: pixelated; border-radius: 2px; }
+.digit-cell .label { color: var(–text-dim); margin-top: 0.2rem; }
+.digit-cell .thresh { color: var(–accent2); }
+
+/* OCR results */
+.ocr-result {
+font-family: var(–mono);
+font-size: 2rem;
+font-weight: 700;
+letter-spacing: 0.1em;
+padding: 0.5rem;
+text-align: center;
+}
+.ocr-result.global { color: var(–warn); }
+.ocr-result.perdigit { color: var(–success); }
+.ocr-compare {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 0.5rem;
+text-align: center;
+}
+.ocr-compare .lbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(–text-dim); margin-bottom: 0.25rem; }
+
+/* Confidence */
+.conf-bar { display: flex; gap: 2px; justify-content: center; margin-top: 0.25rem; }
+.conf-char {
+display: flex; flex-direction: column; align-items: center;
+font-family: var(–mono); font-size: 0.7rem;
+}
+.conf-char .bar-wrap { width: 18px; height: 40px; background: var(–bg); border-radius: 2px; position: relative; overflow: hidden; }
+.conf-char .bar-fill { position: absolute; bottom: 0; width: 100%; border-radius: 2px; }
+.conf-char .ch { margin-top: 2px; }
+
+/* Status */
+#status {
+font-size: 0.8rem;
+color: var(–text-dim);
+min-height: 1.2em;
+margin: 0.5rem 0;
+font-family: var(–mono);
+}
+#status.busy { color: var(–accent); }
+#status.done { color: var(–success); }
+
+.btn {
+background: var(–accent);
+color: #fff;
+border: none;
+border-radius: 6px;
+padding: 0.6rem 1.2rem;
+font-size: 0.85rem;
+font-weight: 600;
+cursor: pointer;
+width: 100%;
+margin-top: 0.5rem;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.toggle-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.toggle-btn {
+background: var(–surface2);
+border: 1px solid var(–border);
+color: var(–text-dim);
+border-radius: 4px;
+padding: 0.3rem 0.6rem;
+font-size: 0.75rem;
+cursor: pointer;
+}
+.toggle-btn.active { background: var(–accent); color: #fff; border-color: var(–accent); }
+
+.hidden { display: none !important; }
+</style>
+
+</head>
+<body>
+
+<h1>Per-Digit <span>OCR</span> Test Harness</h1>
+<p class="subtitle">Adaptive per-digit processing vs global processing — debug & compare</p>
+
+<!-- Upload -->
+
+<div class="card">
+  <div id="dropZone">
+    <input type="file" id="fileInput" accept="image/*">
+    <p><strong>Tap to upload</strong> or drop a cropped meter image</p>
+  </div>
+</div>
+
+<!-- Sample images -->
+
+<div class="card" id="samplesCard">
+  <h2>Or use a bundled test image</h2>
+  <div class="toggle-row" id="sampleBtns"></div>
+</div>
+
+<!-- Parameters -->
+
+<div class="card hidden" id="paramsCard">
+  <h2>Processing Parameters</h2>
+  <div class="params">
+    <label>
+      Gamma <span class="val" id="gammaVal">0.75</span>
+      <input type="range" id="gammaSlider" min="0.3" max="2.0" step="0.05" value="0.75">
+    </label>
+    <label>
+      Clip % <span class="val" id="clipVal">2</span>
+      <input type="range" id="clipSlider" min="0" max="10" step="0.5" value="2">
+    </label>
+    <label>
+      Min gap (px) <span class="val" id="gapVal">3</span>
+      <input type="range" id="gapSlider" min="1" max="20" step="1" value="3">
+    </label>
+    <label>
+      Smooth kernel <span class="val" id="kernelVal">5</span>
+      <input type="range" id="kernelSlider" min="1" max="21" step="2" value="5">
+    </label>
+  </div>
+  <button class="btn" id="runBtn" disabled>Run Per-Digit OCR</button>
+  <div id="status"></div>
+</div>
+
+<!-- Debug: Original -->
+
+<div class="card hidden" id="originalCard">
+  <h2>① Original Crop</h2>
+  <canvas id="originalCanvas" class="full-width"></canvas>
+</div>
+
+<!-- Debug: Histogram + boundaries -->
+
+<div class="card hidden" id="histCard">
+  <h2>② Vertical Projection Histogram</h2>
+  <div id="histogramWrap">
+    <canvas id="histogramCanvas"></canvas>
+  </div>
+  <canvas id="boundaryCanvas" class="full-width"></canvas>
+  <p style="font-size:0.7rem;color:var(--text-dim);margin-top:0.3rem">
+    <span style="color:var(--accent)">Red lines</span> = detected digit column boundaries
+  </p>
+</div>
+
+<!-- Debug: Per-digit cells -->
+
+<div class="card hidden" id="digitsCard">
+  <h2>③ Per-Digit Processing</h2>
+  <div class="toggle-row">
+    <button class="toggle-btn active" data-show="before">Before</button>
+    <button class="toggle-btn active" data-show="after">After</button>
+  </div>
+  <div id="digitsBefore">
+    <p style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.3rem">Raw digit cells:</p>
+    <div class="digit-grid" id="rawDigits"></div>
+  </div>
+  <div id="digitsAfter">
+    <p style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.3rem">After local processing (threshold shown):</p>
+    <div class="digit-grid" id="procDigits"></div>
+  </div>
+</div>
+
+<!-- Debug: Reassembled -->
+
+<div class="card hidden" id="reassembleCard">
+  <h2>④ Reassembled Image</h2>
+  <p style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.3rem">Global (top) vs Per-digit (bottom):</p>
+  <canvas id="globalCanvas" class="full-width" style="margin-bottom:0.25rem"></canvas>
+  <canvas id="perdigitCanvas" class="full-width"></canvas>
+</div>
+
+<!-- OCR Results -->
+
+<div class="card hidden" id="resultCard">
+  <h2>⑤ OCR Results</h2>
+  <div class="ocr-compare">
+    <div>
+      <div class="lbl">Global Processing</div>
+      <div class="ocr-result global" id="globalResult">—</div>
+      <div class="conf-bar" id="globalConf"></div>
+    </div>
+    <div>
+      <div class="lbl">Per-Digit Processing</div>
+      <div class="ocr-result perdigit" id="perdigitResult">—</div>
+      <div class="conf-bar" id="perdigitConf"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<script>
+// ── State ──
+let sourceImageData = null; // raw RGBA ImageData from uploaded crop
+let params = { gamma: 0.75, clip: 2, minGap: 3, kernel: 5 };
+
+// ── DOM refs ──
+const $ = id => document.getElementById(id);
+const fileInput = $('fileInput');
+const dropZone = $('dropZone');
+const runBtn = $('runBtn');
+const statusEl = $('status');
+
+// ── Helpers ──
+function setStatus(msg, cls) {
+  statusEl.textContent = msg;
+  statusEl.className = cls || '';
+}
+
+function showCard(id) { $(id).classList.remove('hidden'); }
+
+function imageDataToCanvas(imgData, canvas) {
+  canvas.width = imgData.width;
+  canvas.height = imgData.height;
+  canvas.getContext('2d').putImageData(imgData, 0, 0);
+  return canvas;
+}
+
+function cloneImageData(src) {
+  return new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+}
+
+function cropImageData(src, x, y, w, h) {
+  const out = new ImageData(w, h);
+  for (let row = 0; row < h; row++) {
+    const srcOff = ((y + row) * src.width + x) * 4;
+    const dstOff = row * w * 4;
+    out.data.set(src.data.subarray(srcOff, srcOff + w * 4), dstOff);
+  }
+  return out;
+}
+
+// ── Image loading (Safari-safe) ──
+function loadImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(data);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
+// ── Grayscale ──
+function toGrayscale(imgData) {
+  const out = cloneImageData(imgData);
+  const d = out.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    d[i] = d[i+1] = d[i+2] = g;
+  }
+  return out;
+}
+
+// ── Contrast stretch with percentile clipping + gamma ──
+function contrastStretch(imgData, clipPct, gamma) {
+  const out = cloneImageData(imgData);
+  const d = out.data;
+  const vals = [];
+  for (let i = 0; i < d.length; i += 4) vals.push(d[i]);
+  vals.sort((a, b) => a - b);
+  const lo = vals[Math.floor(vals.length * clipPct / 100)] || 0;
+  const hi = vals[Math.floor(vals.length * (100 - clipPct) / 100)] || 255;
+  const range = hi - lo || 1;
+  for (let i = 0; i < d.length; i += 4) {
+    let v = (d[i] - lo) / range;
+    v = Math.max(0, Math.min(1, v));
+    v = Math.pow(v, gamma) * 255;
+    d[i] = d[i+1] = d[i+2] = v;
+  }
+  return out;
+}
+
+// ── Otsu binarization ──
+function otsuThreshold(imgData) {
+  const d = imgData.data;
+  const hist = new Array(256).fill(0);
+  const total = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) hist[d[i]]++;
+
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+
+  let sumB = 0, wB = 0, maxVar = 0, threshold = 0;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const variance = wB * wF * (mB - mF) * (mB - mF);
+    if (variance > maxVar) { maxVar = variance; threshold = t; }
+  }
+  return threshold;
+}
+
+function binarize(imgData, threshold) {
+  const out = cloneImageData(imgData);
+  const d = out.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = d[i] >= threshold ? 255 : 0;
+    d[i] = d[i+1] = d[i+2] = v;
+  }
+  return out;
+}
+
+// ── Global processing pipeline ──
+function globalProcess(imgData) {
+  const gray = toGrayscale(imgData);
+  const stretched = contrastStretch(gray, params.clip, params.gamma);
+  const thresh = otsuThreshold(stretched);
+  return binarize(stretched, thresh);
+}
+
+// ── Vertical projection histogram ──
+function verticalProjection(grayImgData) {
+  const { width, height, data } = grayImgData;
+  const proj = new Float64Array(width);
+  for (let x = 0; x < width; x++) {
+    let sum = 0;
+    for (let y = 0; y < height; y++) {
+      sum += 255 - data[(y * width + x) * 4]; // invert: dark pixels = high value
+    }
+    proj[x] = sum / height; // average darkness per column
+  }
+  return proj;
+}
+
+// ── Smooth projection ──
+function smooth(arr, kernelSize) {
+  const half = Math.floor(kernelSize / 2);
+  const out = new Float64Array(arr.length);
+  for (let i = 0; i < arr.length; i++) {
+    let sum = 0, count = 0;
+    for (let k = -half; k <= half; k++) {
+      const idx = i + k;
+      if (idx >= 0 && idx < arr.length) { sum += arr[idx]; count++; }
+    }
+    out[i] = sum / count;
+  }
+  return out;
+}
+
+// ── Find digit boundaries from projection ──
+function findDigitBoundaries(proj, minGap) {
+  // Adaptive threshold: use the mean of the projection
+  const mean = proj.reduce((a, b) => a + b, 0) / proj.length;
+  // Mark columns as "ink" if above a fraction of mean
+  const threshold = mean * 0.35;
+
+  const isInk = proj.map(v => v > threshold);
+
+  // Find contiguous ink runs
+  const runs = [];
+  let inRun = false, start = 0;
+  for (let i = 0; i < isInk.length; i++) {
+    if (isInk[i] && !inRun) { start = i; inRun = true; }
+    if (!isInk[i] && inRun) { runs.push([start, i - 1]); inRun = false; }
+  }
+  if (inRun) runs.push([start, isInk.length - 1]);
+
+  if (runs.length === 0) return [];
+
+  // Merge runs that are too close (smaller than minGap)
+  const merged = [runs[0]];
+  for (let i = 1; i < runs.length; i++) {
+    const prev = merged[merged.length - 1];
+    if (runs[i][0] - prev[1] < minGap) {
+      prev[1] = runs[i][1]; // merge
+    } else {
+      merged.push(runs[i]);
+    }
+  }
+
+  // Filter out very narrow runs (likely noise) — less than 1/4 of median width
+  const widths = merged.map(r => r[1] - r[0] + 1);
+  const sortedWidths = [...widths].sort((a, b) => a - b);
+  const medianWidth = sortedWidths[Math.floor(sortedWidths.length / 2)];
+  const minWidth = Math.max(4, medianWidth * 0.25);
+
+  return merged.filter(r => (r[1] - r[0] + 1) >= minWidth);
+}
+
+// ── Detect digit row (vertical extent) using horizontal projection ──
+function findDigitRow(grayImgData) {
+  const { width, height, data } = grayImgData;
+  const hProj = new Float64Array(height);
+  for (let y = 0; y < height; y++) {
+    let sum = 0;
+    for (let x = 0; x < width; x++) {
+      sum += 255 - data[(y * width + x) * 4];
+    }
+    hProj[y] = sum / width;
+  }
+
+  const mean = hProj.reduce((a, b) => a + b, 0) / hProj.length;
+  const threshold = mean * 0.4;
+
+  // Find the tallest contiguous block of "ink" rows
+  let bestStart = 0, bestEnd = height - 1, bestLen = 0;
+  let inRun = false, start = 0;
+  for (let y = 0; y < height; y++) {
+    if (hProj[y] > threshold && !inRun) { start = y; inRun = true; }
+    if ((hProj[y] <= threshold || y === height - 1) && inRun) {
+      const end = (hProj[y] > threshold) ? y : y - 1;
+      const len = end - start + 1;
+      if (len > bestLen) { bestStart = start; bestEnd = end; bestLen = len; }
+      inRun = false;
+    }
+  }
+
+  // Add small padding
+  const pad = Math.max(2, Math.round(bestLen * 0.05));
+  return [Math.max(0, bestStart - pad), Math.min(height - 1, bestEnd + pad)];
+}
+
+// ── Per-digit processing ──
+function processDigits(grayImgData, boundaries, rowTop, rowBottom) {
+  const cellHeight = rowBottom - rowTop + 1;
+  const rawCells = [];
+  const procCells = [];
+  const thresholds = [];
+
+  // Add padding to each boundary
+  for (const [left, right] of boundaries) {
+    const padX = Math.max(1, Math.round((right - left) * 0.08));
+    const x0 = Math.max(0, left - padX);
+    const x1 = Math.min(grayImgData.width - 1, right + padX);
+    const cellWidth = x1 - x0 + 1;
+
+    const raw = cropImageData(grayImgData, x0, rowTop, cellWidth, cellHeight);
+    rawCells.push(raw);
+
+    // Local contrast stretch
+    const stretched = contrastStretch(raw, params.clip, params.gamma);
+    const thresh = otsuThreshold(stretched);
+    thresholds.push(thresh);
+    const bin = binarize(stretched, thresh);
+    procCells.push(bin);
+  }
+
+  return { rawCells, procCells, thresholds };
+}
+
+// ── Reassemble processed cells into a single image ──
+function reassemble(procCells, boundaries, grayImgData, rowTop, rowBottom) {
+  const outWidth = grayImgData.width;
+  const outHeight = rowBottom - rowTop + 1;
+  const out = new ImageData(outWidth, outHeight);
+  // Fill with white
+  out.data.fill(255);
+
+  for (let i = 0; i < procCells.length; i++) {
+    const cell = procCells[i];
+    const [left, right] = boundaries[i];
+    const padX = Math.max(1, Math.round((right - left) * 0.08));
+    const x0 = Math.max(0, left - padX);
+
+    for (let y = 0; y < cell.height; y++) {
+      for (let x = 0; x < cell.width; x++) {
+        const srcIdx = (y * cell.width + x) * 4;
+        const dstX = x0 + x;
+        if (dstX < outWidth) {
+          const dstIdx = (y * outWidth + dstX) * 4;
+          out.data[dstIdx] = cell.data[srcIdx];
+          out.data[dstIdx + 1] = cell.data[srcIdx + 1];
+          out.data[dstIdx + 2] = cell.data[srcIdx + 2];
+          out.data[dstIdx + 3] = 255;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// ── Draw histogram ──
+function drawHistogram(canvas, proj, boundaries) {
+  const W = canvas.width = canvas.parentElement.clientWidth * 2;
+  const H = canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const max = Math.max(...proj) || 1;
+  const scaleX = W / proj.length;
+
+  // Bars
+  for (let i = 0; i < proj.length; i++) {
+    const barH = (proj[i] / max) * (H - 10);
+    ctx.fillStyle = 'rgba(0,210,255,0.5)';
+    ctx.fillRect(i * scaleX, H - barH, Math.max(1, scaleX), barH);
+  }
+
+  // Boundary lines
+  ctx.strokeStyle = '#e94560';
+  ctx.lineWidth = 2;
+  for (const [left, right] of boundaries) {
+    ctx.beginPath();
+    ctx.moveTo(left * scaleX, 0); ctx.lineTo(left * scaleX, H);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo((right + 1) * scaleX, 0); ctx.lineTo((right + 1) * scaleX, H);
+    ctx.stroke();
+  }
+}
+
+// ── Draw boundaries overlay ──
+function drawBoundaries(canvas, imgData, boundaries, rowTop, rowBottom) {
+  imageDataToCanvas(imgData, canvas);
+  const ctx = canvas.getContext('2d');
+
+  // Row band
+  ctx.fillStyle = 'rgba(0,210,255,0.1)';
+  ctx.fillRect(0, rowTop, imgData.width, rowBottom - rowTop + 1);
+
+  // Column lines
+  ctx.strokeStyle = 'rgba(233,69,96,0.8)';
+  ctx.lineWidth = 1;
+  for (const [left, right] of boundaries) {
+    ctx.beginPath();
+    ctx.moveTo(left, 0); ctx.lineTo(left, imgData.height);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(right + 1, 0); ctx.lineTo(right + 1, imgData.height);
+    ctx.stroke();
+  }
+
+  // Horizontal row lines
+  ctx.strokeStyle = 'rgba(0,210,255,0.6)';
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(0, rowTop); ctx.lineTo(imgData.width, rowTop);
+  ctx.moveTo(0, rowBottom); ctx.lineTo(imgData.width, rowBottom);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ── Render digit cells ──
+function renderDigitCells(containerId, cells, thresholds) {
+  const container = $(containerId);
+  container.innerHTML = '';
+  cells.forEach((cell, i) => {
+    const div = document.createElement('div');
+    div.className = 'digit-cell';
+    const c = document.createElement('canvas');
+    imageDataToCanvas(cell, c);
+    div.appendChild(c);
+    const lbl = document.createElement('div');
+    lbl.className = 'label';
+    lbl.textContent = `#${i + 1}`;
+    div.appendChild(lbl);
+    if (thresholds) {
+      const t = document.createElement('div');
+      t.className = 'thresh';
+      t.textContent = `T=${thresholds[i]}`;
+      div.appendChild(t);
+    }
+    container.appendChild(div);
+  });
+}
+
+// ── Render confidence bars ──
+function renderConfidence(containerId, result) {
+  const container = $(containerId);
+  container.innerHTML = '';
+  if (!result || !result.data || !result.data.symbols) return;
+  for (const sym of result.data.symbols) {
+    const div = document.createElement('div');
+    div.className = 'conf-char';
+    const wrap = document.createElement('div');
+    wrap.className = 'bar-wrap';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill';
+    const conf = sym.confidence / 100;
+    fill.style.height = (conf * 100) + '%';
+    fill.style.background = conf > 0.8 ? 'var(--success)' : conf > 0.5 ? 'var(--warn)' : 'var(--accent)';
+    wrap.appendChild(fill);
+    div.appendChild(wrap);
+    const ch = document.createElement('div');
+    ch.className = 'ch';
+    ch.textContent = sym.text;
+    div.appendChild(ch);
+    container.appendChild(div);
+  }
+}
+
+// ── Tesseract OCR ──
+async function runOCR(imageData) {
+  // Convert ImageData to blob via canvas
+  const c = document.createElement('canvas');
+  imageDataToCanvas(imageData, c);
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+
+  const worker = await Tesseract.createWorker('eng', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+  });
+
+  await worker.setParameters({
+    tessedit_char_whitelist: '0123456789.',
+    tessedit_pageseg_mode: '7',
+  });
+
+  const result = await worker.recognize(blob);
+  await worker.terminate();
+  return result;
+}
+
+// ── Main pipeline ──
+async function runPipeline() {
+  if (!sourceImageData) return;
+  runBtn.disabled = true;
+  setStatus('Processing…', 'busy');
+
+  try {
+    // Show original
+    showCard('originalCard');
+    imageDataToCanvas(sourceImageData, $('originalCanvas'));
+
+    // Grayscale
+    setStatus('Converting to grayscale…', 'busy');
+    const gray = toGrayscale(sourceImageData);
+
+    // Vertical projection
+    setStatus('Computing vertical projection…', 'busy');
+    const rawProj = verticalProjection(gray);
+    const smoothedProj = smooth(rawProj, params.kernel);
+
+    // Find digit row
+    const [rowTop, rowBottom] = findDigitRow(gray);
+
+    // Compute projection only on digit row for better segmentation
+    const rowGray = cropImageData(gray, 0, rowTop, gray.width, rowBottom - rowTop + 1);
+    const rowProj = verticalProjection(rowGray);
+    const rowSmoothed = smooth(rowProj, params.kernel);
+
+    // Find boundaries
+    const boundaries = findDigitBoundaries(rowSmoothed, params.minGap);
+    setStatus(`Found ${boundaries.length} digit columns`, 'busy');
+
+    // Draw histogram
+    showCard('histCard');
+    drawHistogram($('histogramCanvas'), rowSmoothed, boundaries);
+    drawBoundaries($('boundaryCanvas'), gray, boundaries, rowTop, rowBottom);
+
+    // Per-digit processing
+    setStatus('Processing individual digits…', 'busy');
+    const { rawCells, procCells, thresholds } = processDigits(gray, boundaries, rowTop, rowBottom);
+
+    showCard('digitsCard');
+    renderDigitCells('rawDigits', rawCells);
+    renderDigitCells('procDigits', procCells, thresholds);
+
+    // Reassemble
+    setStatus('Reassembling…', 'busy');
+    const perDigitImg = reassemble(procCells, boundaries, gray, rowTop, rowBottom);
+
+    // Global process for comparison
+    const globalGray = cropImageData(gray, 0, rowTop, gray.width, rowBottom - rowTop + 1);
+    const globalProcessed = globalProcess(cropImageData(sourceImageData, 0, rowTop, gray.width, rowBottom - rowTop + 1));
+
+    showCard('reassembleCard');
+    imageDataToCanvas(globalProcessed, $('globalCanvas'));
+    imageDataToCanvas(perDigitImg, $('perdigitCanvas'));
+
+    // OCR
+    setStatus('Running Tesseract on global image…', 'busy');
+    const globalOCR = await runOCR(globalProcessed);
+    $('globalResult').textContent = globalOCR.data.text.trim() || '(nothing)';
+    renderConfidence('globalConf', globalOCR);
+
+    setStatus('Running Tesseract on per-digit image…', 'busy');
+    const perDigitOCR = await runOCR(perDigitImg);
+    $('perdigitResult').textContent = perDigitOCR.data.text.trim() || '(nothing)';
+    renderConfidence('perdigitConf', perDigitOCR);
+
+    showCard('resultCard');
+    setStatus('Done ✓', 'done');
+  } catch (err) {
+    setStatus('Error: ' + err.message, '');
+    console.error(err);
+  } finally {
+    runBtn.disabled = false;
+  }
+}
+
+// ── Event wiring ──
+fileInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  setStatus('Loading image…', 'busy');
+  try {
+    sourceImageData = await loadImageFile(file);
+    showCard('paramsCard');
+    runBtn.disabled = false;
+    setStatus(`Loaded ${sourceImageData.width}×${sourceImageData.height}`, '');
+    // Auto-run
+    runPipeline();
+  } catch (err) {
+    setStatus('Failed to load image: ' + err.message, '');
+  }
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change'));
+  }
+});
+
+// Paste support
+document.addEventListener('paste', e => {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) {
+    const file = item.getAsFile();
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change'));
+  }
+});
+
+// Parameter sliders
+for (const [slider, valSpan, key, parse] of [
+  ['gammaSlider', 'gammaVal', 'gamma', parseFloat],
+  ['clipSlider', 'clipVal', 'clip', parseFloat],
+  ['gapSlider', 'gapVal', 'minGap', parseInt],
+  ['kernelSlider', 'kernelVal', 'kernel', parseInt],
+]) {
+  $(slider).addEventListener('input', () => {
+    const v = parse($(slider).value);
+    params[key] = v;
+    $(valSpan).textContent = v;
+  });
+}
+
+runBtn.addEventListener('click', runPipeline);
+
+// Toggle before/after
+document.querySelectorAll('#digitsCard .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    btn.classList.toggle('active');
+    const show = btn.dataset.show;
+    const target = show === 'before' ? $('digitsBefore') : $('digitsAfter');
+    target.classList.toggle('hidden', !btn.classList.contains('active'));
+  });
+});
+
+// ── Load bundled test images ──
+async function loadSampleImage(path, name) {
+  setStatus(`Loading ${name}…`, 'busy');
+  try {
+    const resp = await fetch(path);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    sourceImageData = ctx.getImageData(0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    showCard('paramsCard');
+    runBtn.disabled = false;
+    setStatus(`Loaded ${sourceImageData.width}×${sourceImageData.height}`, '');
+    runPipeline();
+  } catch (err) {
+    setStatus('Failed to load sample: ' + err.message, '');
+  }
+}
+
+// Sample images co-located in same directory
+const sampleFiles = [
+  { path: 'IMG_6796.jpeg', name: '① Shadow right' },
+  { path: 'IMG_6795.jpeg', name: '② Low contrast' },
+  { path: 'IMG_6794.jpeg', name: '③ Gradient' },
+];
+
+const sampleContainer = $('sampleBtns');
+sampleFiles.forEach(s => {
+  const btn = document.createElement('button');
+  btn.className = 'toggle-btn';
+  btn.textContent = s.name;
+  btn.addEventListener('click', () => loadSampleImage(s.path, s.name));
+  sampleContainer.appendChild(btn);
+});
+</script>
+
+</body>
+</html>

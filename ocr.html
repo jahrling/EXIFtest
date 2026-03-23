@@ -1044,10 +1044,30 @@
     overlayCanvas.addEventListener('touchend', onSwipeEnd);
     overlayCanvas.addEventListener('mouseup', onSwipeEnd);
 
+    let swipeAngle = 0; // radians, from linear regression of swipe path
+
+    function computeSwipeAngle() {
+        if (swipePath.length < 3) { swipeAngle = 0; return; }
+        // Linear regression: y = mx + b
+        const n = swipePath.length;
+        let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        for (const p of swipePath) {
+            sumX += p.x;
+            sumY += p.y;
+            sumXY += p.x * p.y;
+            sumX2 += p.x * p.x;
+        }
+        const denom = n * sumX2 - sumX * sumX;
+        if (Math.abs(denom) < 0.001) { swipeAngle = 0; return; }
+        const slope = (n * sumXY - sumX * sumY) / denom;
+        swipeAngle = Math.atan(slope);
+    }
+
     function onSwipeEnd() {
         if (!isDrawing) return;
         isDrawing = false;
         if (swipePath.length < 5) { clearSwipe(); return; }
+        computeSwipeAngle();
         computeBoundingBox();
         drawSwipe();
         cropRegion();
@@ -1071,14 +1091,18 @@
         ovCtx.stroke();
         ovCtx.restore();
 
-        // Draw bounding box if computed
+        // Draw rotated bounding box if computed
         if (boundingBox) {
             const b = boundingBox;
             ovCtx.save();
+            ovCtx.translate(b.cx, b.cy);
+            ovCtx.rotate(b.angle);
+
+            // Dashed rectangle in rotated space
             ovCtx.setLineDash([6, 4]);
             ovCtx.strokeStyle = '#34d399';
             ovCtx.lineWidth = 2;
-            ovCtx.strokeRect(b.x, b.y, b.w, b.h);
+            ovCtx.strokeRect(b.rMinX, b.rMinY, b.w, b.h);
 
             // Corner markers
             const cLen = 12;
@@ -1086,12 +1110,12 @@
             ovCtx.lineWidth = 3;
             ovCtx.strokeStyle = '#34d399';
             const corners = [
-                [b.x, b.y], [b.x + b.w, b.y],
-                [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]
+                [b.rMinX, b.rMinY, 1, 1],
+                [b.rMaxX, b.rMinY, -1, 1],
+                [b.rMinX, b.rMaxY, 1, -1],
+                [b.rMaxX, b.rMaxY, -1, -1]
             ];
-            corners.forEach(([cx, cy]) => {
-                const sx = cx === b.x ? 1 : -1;
-                const sy = cy === b.y ? 1 : -1;
+            corners.forEach(([cx, cy, sx, sy]) => {
                 ovCtx.beginPath();
                 ovCtx.moveTo(cx + sx * cLen, cy);
                 ovCtx.lineTo(cx, cy);
@@ -1103,20 +1127,41 @@
     }
 
     function computeBoundingBox() {
+        // Compute the center of the swipe path
+        let cx = 0, cy = 0;
+        for (const p of swipePath) { cx += p.x; cy += p.y; }
+        cx /= swipePath.length;
+        cy /= swipePath.length;
+
+        // Rotate all swipe points by -swipeAngle around the center to align horizontally
+        const cos = Math.cos(-swipeAngle);
+        const sin = Math.sin(-swipeAngle);
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const p of swipePath) {
-            if (p.x < minX) minX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y > maxY) maxY = p.y;
+            const dx = p.x - cx;
+            const dy = p.y - cy;
+            const rx = dx * cos - dy * sin;
+            const ry = dx * sin + dy * cos;
+            if (rx < minX) minX = rx;
+            if (ry < minY) minY = ry;
+            if (rx > maxX) maxX = rx;
+            if (ry > maxY) maxY = ry;
         }
-        // Expand by stroke radius only (half of 40px line width)
+
+        // Expand by stroke radius
         const r = 20;
+        minX -= r; minY -= r;
+        maxX += r; maxY += r;
+
+        // Store the rotated bounding box as center + dimensions + angle
         boundingBox = {
-            x: Math.max(0, minX - r),
-            y: Math.max(0, minY - r),
-            w: Math.min(overlayCanvas.width, maxX + r) - Math.max(0, minX - r),
-            h: Math.min(overlayCanvas.height, maxY + r) - Math.max(0, minY - r)
+            cx: cx,
+            cy: cy,
+            // Also store axis-aligned version for overlay drawing
+            rMinX: minX, rMinY: minY, rMaxX: maxX, rMaxY: maxY,
+            w: maxX - minX,
+            h: maxY - minY,
+            angle: swipeAngle
         };
     }
 
@@ -1127,51 +1172,71 @@
         const area = document.getElementById('canvasArea');
         const areaRect = area.getBoundingClientRect();
 
-        // Build an ImageBitmap from the stored clean pixel data
+        // Build source canvas from stored clean pixel data
         const srcCanvas = document.createElement('canvas');
         srcCanvas.width = originalPixels.width;
         srcCanvas.height = originalPixels.height;
         const srcCtx = srcCanvas.getContext('2d');
         srcCtx.putImageData(originalPixels, 0, 0);
 
-        const offscreen = document.createElement('canvas');
-        offscreen.width = areaRect.width * 2; // 2x for quality
-        offscreen.height = areaRect.height * 2;
-        const octx = offscreen.getContext('2d');
-        octx.scale(2, 2);
+        // Step 1: Render the full transformed image (replicating CSS transform)
+        const fullCanvas = document.createElement('canvas');
+        fullCanvas.width = areaRect.width * 2;
+        fullCanvas.height = areaRect.height * 2;
+        const fCtx = fullCanvas.getContext('2d');
+        fCtx.scale(2, 2);
 
-        // Replicate the CSS transform
         const cx = areaRect.width / 2;
         const cy = areaRect.height / 2;
-
         const naturalW = originalPixels.width;
         const naturalH = originalPixels.height;
-
-        // Compute the "object-fit: contain" display size
         const areaW = areaRect.width;
         const areaH = areaRect.height;
         const ratio = Math.min(areaW / naturalW, areaH / naturalH);
         const dispW = naturalW * ratio;
         const dispH = naturalH * ratio;
 
-        octx.save();
-        octx.translate(cx, cy);
-        octx.rotate((currentRotation * Math.PI) / 180);
-        octx.scale(currentScale, currentScale);
-        octx.translate(translateX / currentScale, translateY / currentScale);
-        octx.drawImage(srcCanvas, -dispW / 2, -dispH / 2, dispW, dispH);
-        octx.restore();
+        fCtx.save();
+        fCtx.translate(cx, cy);
+        fCtx.rotate((currentRotation * Math.PI) / 180);
+        fCtx.scale(currentScale, currentScale);
+        fCtx.translate(translateX / currentScale, translateY / currentScale);
+        fCtx.drawImage(srcCanvas, -dispW / 2, -dispH / 2, dispW, dispH);
+        fCtx.restore();
 
-        // Crop the bounding box region — this canvas is 100% clean
+        // Step 2: Extract the rotated bounding box region
+        // We create a crop canvas sized to the bounding box,
+        // translate to the box center on the full canvas,
+        // counter-rotate by the swipe angle, then draw.
         const b = boundingBox;
-        const sx = b.x * 2, sy = b.y * 2, sw = b.w * 2, sh = b.h * 2;
+        const cropW = Math.round(b.w * 2);
+        const cropH = Math.round(b.h * 2);
 
-        lastRawCrop = octx.getImageData(sx, sy, sw, sh);
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = cropW;
+        cropCanvas.height = cropH;
+        const cCtx = cropCanvas.getContext('2d');
+
+        // Move origin to center of crop canvas, rotate to cancel swipe angle,
+        // then draw the full image offset so the bounding box center aligns
+        cCtx.save();
+        cCtx.translate(cropW / 2, cropH / 2);
+        cCtx.rotate(-b.angle);
+        // The bounding box center in fullCanvas coords (at 2x scale)
+        cCtx.drawImage(fullCanvas,
+            0, 0, fullCanvas.width, fullCanvas.height,
+            -b.cx * 2, -b.cy * 2, fullCanvas.width, fullCanvas.height
+        );
+        cCtx.restore();
+
+        lastRawCrop = cCtx.getImageData(0, 0, cropW, cropH);
         applyCropProcessing();
 
         bottomPanel.classList.add('open');
         document.getElementById('canvasArea').classList.add('shrunk');
-        statusText.innerHTML = 'Region captured — <span class="accent">preview below</span>';
+        const angleDeg = Math.round(swipeAngle * 180 / Math.PI * 10) / 10;
+        const angleNote = Math.abs(angleDeg) > 0.5 ? ` · rotated ${angleDeg}°` : '';
+        statusText.innerHTML = `Region captured${angleNote} — <span class="accent">preview below</span>`;
     }
 
     // ── Debug toggle state ──
@@ -1289,6 +1354,7 @@
         swipePath = [];
         boundingBox = null;
         lastRawCrop = null;
+        swipeAngle = 0;
         if (overlayCanvas.width) ovCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
         bottomPanel.classList.remove('open');
         document.getElementById('canvasArea').classList.remove('shrunk');

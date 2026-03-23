@@ -1045,6 +1045,7 @@
     overlayCanvas.addEventListener('mouseup', onSwipeEnd);
 
     let swipeAngle = 0; // radians, from linear regression of swipe path
+    let appliedCorrection = 0; // degrees, the auto-rotation we applied to the image
 
     function computeSwipeAngle() {
         if (swipePath.length < 3) { swipeAngle = 0; return; }
@@ -1068,6 +1069,36 @@
         isDrawing = false;
         if (swipePath.length < 5) { clearSwipe(); return; }
         computeSwipeAngle();
+
+        // Apply counter-rotation to the main image so numbers become horizontal
+        const angleDeg = swipeAngle * 180 / Math.PI;
+        appliedCorrection = 0;
+        if (Math.abs(angleDeg) > 0.3) {
+            appliedCorrection = -angleDeg;
+            currentRotation += appliedCorrection;
+            updateTransform();
+
+            // Rotate the swipe path points around the canvas center
+            // so the overlay stays aligned with the now-rotated image
+            const cw = overlayCanvas.width;
+            const ch = overlayCanvas.height;
+            const ocx = cw / 2;
+            const ocy = ch / 2;
+            const cos = Math.cos(-swipeAngle);
+            const sin = Math.sin(-swipeAngle);
+            swipePath = swipePath.map(p => {
+                const dx = p.x - ocx;
+                const dy = p.y - ocy;
+                return {
+                    x: ocx + dx * cos - dy * sin,
+                    y: ocy + dx * sin + dy * cos
+                };
+            });
+
+            // Recompute angle from the now-horizontal points (should be ~0)
+            swipeAngle = 0;
+        }
+
         computeBoundingBox();
         drawSwipe();
         cropRegion();
@@ -1234,8 +1265,8 @@
 
         bottomPanel.classList.add('open');
         document.getElementById('canvasArea').classList.add('shrunk');
-        const angleDeg = Math.round(swipeAngle * 180 / Math.PI * 10) / 10;
-        const angleNote = Math.abs(angleDeg) > 0.5 ? ` · rotated ${angleDeg}°` : '';
+        const corrDeg = Math.round(appliedCorrection * 10) / 10;
+        const angleNote = Math.abs(corrDeg) > 0.3 ? ` · corrected ${corrDeg}°` : '';
         statusText.innerHTML = `Region captured${angleNote} — <span class="accent">preview below</span>`;
     }
 
@@ -1354,6 +1385,12 @@
         swipePath = [];
         boundingBox = null;
         lastRawCrop = null;
+        // Undo the auto-rotation correction
+        if (appliedCorrection !== 0) {
+            currentRotation -= appliedCorrection;
+            appliedCorrection = 0;
+            updateTransform();
+        }
         swipeAngle = 0;
         if (overlayCanvas.width) ovCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
         bottomPanel.classList.remove('open');

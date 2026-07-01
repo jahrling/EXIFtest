@@ -35,6 +35,8 @@
     <title>Water Meter Photo Logger</title>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
+    <!-- In-browser OCR for reading meter digits from the photo (no server, no key). -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -586,6 +588,66 @@
             border-radius: 6px;
             pointer-events: none;
         }
+
+        /* ---- OCR: read meter digits from the photo ---- */
+        .ocr-open-btn {
+            margin-top: 6px;
+            width: 100%;
+            padding: 10px;
+            border: 1px dashed #0078d4;
+            background: rgba(0,120,212,0.06);
+            color: #0078d4;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .ocr-open-btn:disabled { opacity: 0.45; cursor: not-allowed; border-style: solid; }
+        .ocr-modal {
+            position: fixed; inset: 0; z-index: 11000;
+            background: rgba(10,14,26,0.92);
+            display: none; flex-direction: column;
+            padding: env(safe-area-inset-top) 12px 12px;
+            color: #eee;
+        }
+        .ocr-modal.open { display: flex; }
+        .ocr-modal-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 4px; gap: 10px;
+        }
+        .ocr-modal-head h3 { font-size: 1rem; margin: 0; color: #fff; }
+        .ocr-x {
+            background: none; border: none; color: #cbd5e1;
+            font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0 6px;
+        }
+        .ocr-instr { text-align: center; font-size: 0.85rem; color: #93c5fd; margin: 2px 0 8px; }
+        #ocrCanvasArea {
+            position: relative; flex: 1 1 auto; min-height: 200px;
+            background: #000; border-radius: 10px; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #ocrImage { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+        #ocrOverlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+        .ocr-bottom { margin-top: 10px; }
+        .ocr-crop-wrap { text-align: center; }
+        #ocrCropPreview {
+            max-width: 100%; max-height: 84px; background: #fff;
+            border-radius: 6px; image-rendering: pixelated;
+        }
+        .ocr-result { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .ocr-result label { font-size: 0.8rem; color: #cbd5e1; }
+        #ocrValue {
+            flex: 1; padding: 10px; font-size: 1.4rem; font-variant-numeric: tabular-nums;
+            text-align: center; border: 1px solid #334155; border-radius: 8px;
+            background: #0f172a; color: #fff;
+        }
+        #ocrConfidence { min-width: 46px; text-align: right; font-weight: 700; font-size: 0.9rem; }
+        .ocr-actions { display: flex; gap: 8px; margin-top: 10px; }
+        .ocr-actions button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+        .ocr-use { background: linear-gradient(135deg,#28a745,#20c997); color: #fff; }
+        .ocr-use:disabled { opacity: 0.4; cursor: not-allowed; }
+        .ocr-redo { background: #334155; color: #e2e8f0; }
+        .ocr-loading { text-align: center; color: #93c5fd; font-size: 0.85rem; margin-top: 8px; }
+        .ocr-hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -635,11 +697,13 @@
                             <div class="reading-field">
                                 <label for="reading1"><span id="reading1Label">Meter Reading</span></label>
                                 <input type="number" id="reading1" step="0.01" placeholder="Enter reading" required>
+                                <button type="button" class="ocr-open-btn" data-target="reading1" disabled>📷 Read digits from photo</button>
                             </div>
-                            
+
                             <div class="reading-field hidden" id="reading2Container">
                                 <label for="reading2">Meter Reading (Large Side)</label>
                                 <input type="number" id="reading2" step="0.01" placeholder="Enter reading 2">
+                                <button type="button" class="ocr-open-btn" data-target="reading2" disabled>📷 Read digits from photo</button>
                             </div>
                         </div>
                         
@@ -758,6 +822,34 @@
             </div>
             
             <div class="status" id="status"></div>
+        </div>
+    </div>
+
+    <!-- ===== OCR modal: swipe across the meter digits to read them ===== -->
+    <div class="ocr-modal" id="ocrModal" role="dialog" aria-modal="true" aria-label="Read digits from photo">
+        <div class="ocr-modal-head">
+            <h3>Swipe across the meter digits</h3>
+            <button type="button" class="ocr-x" id="ocrCloseBtn" aria-label="Close">×</button>
+        </div>
+        <div class="ocr-instr" id="ocrInstr">Drag across the meter numbers — cover their full height for the best read.</div>
+        <div id="ocrCanvasArea">
+            <img id="ocrImage" alt="Meter photo">
+            <canvas id="ocrOverlay"></canvas>
+        </div>
+        <div class="ocr-bottom">
+            <div class="ocr-crop-wrap ocr-hidden" id="ocrCropWrap">
+                <canvas id="ocrCropPreview"></canvas>
+            </div>
+            <div class="ocr-loading ocr-hidden" id="ocrLoading">Reading digits…</div>
+            <div class="ocr-result ocr-hidden" id="ocrResultRow">
+                <label for="ocrValue">Reading</label>
+                <input type="text" id="ocrValue" inputmode="decimal" autocomplete="off">
+                <span id="ocrConfidence"></span>
+            </div>
+            <div class="ocr-actions">
+                <button type="button" class="ocr-redo" id="ocrRedoBtn">↩ Re-swipe</button>
+                <button type="button" class="ocr-use" id="ocrUseBtn" disabled>Use this reading</button>
+            </div>
         </div>
     </div>
 
@@ -2424,6 +2516,236 @@
                 status.style.display = 'none';
             }, 4000);
         }
+
+        // ============================================
+        // OCR: read meter digits from the loaded photo
+        // Swipe across the digits -> crop -> preprocess -> Tesseract -> reading.
+        // Ported/simplified from the standalone ocr.html "Meter Reader".
+        // ============================================
+        (() => {
+            const modal = document.getElementById('ocrModal');
+            const ocrImage = document.getElementById('ocrImage');
+            const overlay = document.getElementById('ocrOverlay');
+            const ovCtx = overlay.getContext('2d');
+            const canvasArea = document.getElementById('ocrCanvasArea');
+            const cropWrap = document.getElementById('ocrCropWrap');
+            const cropPreview = document.getElementById('ocrCropPreview');
+            const cropCtx = cropPreview.getContext('2d', { willReadFrequently: true });
+            const loadingEl = document.getElementById('ocrLoading');
+            const resultRow = document.getElementById('ocrResultRow');
+            const ocrValue = document.getElementById('ocrValue');
+            const ocrConfidence = document.getElementById('ocrConfidence');
+            const useBtn = document.getElementById('ocrUseBtn');
+            const redoBtn = document.getElementById('ocrRedoBtn');
+            const closeBtn = document.getElementById('ocrCloseBtn');
+            const openBtns = document.querySelectorAll('.ocr-open-btn');
+
+            let targetInput = null;
+            let worker = null;
+            let drawing = false;
+            let path = [];
+            let bbox = null;
+
+            // Enable the "Read digits" buttons once a photo is loaded.
+            imagePreview.addEventListener('load', () => {
+                if (imagePreview.src && !imagePreview.src.endsWith('#')) {
+                    openBtns.forEach(b => b.disabled = false);
+                }
+            });
+            function disableButtons() { openBtns.forEach(b => b.disabled = true); }
+            if (resetBtn) resetBtn.addEventListener('click', () => { disableButtons(); closeModal(); });
+
+            openBtns.forEach(btn => btn.addEventListener('click', () => {
+                if (!imagePreview.src) return;
+                targetInput = document.getElementById(btn.dataset.target);
+                openModal();
+            }));
+
+            function openModal() {
+                ocrImage.src = imagePreview.src;
+                modal.classList.add('open');
+                resetSwipe();
+                // size the overlay once layout settles
+                requestAnimationFrame(() => requestAnimationFrame(sizeOverlay));
+            }
+            function closeModal() { modal.classList.remove('open'); }
+            closeBtn.addEventListener('click', closeModal);
+
+            function sizeOverlay() {
+                overlay.width = canvasArea.clientWidth;
+                overlay.height = canvasArea.clientHeight;
+                drawSwipe();
+            }
+            window.addEventListener('resize', () => { if (modal.classList.contains('open')) sizeOverlay(); });
+
+            function resetSwipe() {
+                path = []; bbox = null; drawing = false;
+                if (overlay.width) ovCtx.clearRect(0, 0, overlay.width, overlay.height);
+                cropWrap.classList.add('ocr-hidden');
+                loadingEl.classList.add('ocr-hidden');
+                resultRow.classList.add('ocr-hidden');
+                useBtn.disabled = true;
+                ocrValue.value = '';
+                ocrConfidence.textContent = '';
+            }
+            redoBtn.addEventListener('click', resetSwipe);
+
+            // ---- swipe capture ----
+            function pos(e) {
+                const r = overlay.getBoundingClientRect();
+                const t = e.touches ? e.touches[0] : e;
+                return { x: t.clientX - r.left, y: t.clientY - r.top };
+            }
+            function start(e) { e.preventDefault(); drawing = true; path = [pos(e)]; bbox = null; drawSwipe(); }
+            function move(e) { if (!drawing) return; e.preventDefault(); path.push(pos(e)); drawSwipe(); }
+            function end() {
+                if (!drawing) return;
+                drawing = false;
+                if (path.length < 5) { resetSwipe(); return; }
+                computeBBox();
+                drawSwipe();
+                cropRegion();
+                runOCR();
+            }
+            overlay.addEventListener('touchstart', start, { passive: false });
+            overlay.addEventListener('touchmove', move, { passive: false });
+            overlay.addEventListener('touchend', end);
+            overlay.addEventListener('mousedown', start);
+            overlay.addEventListener('mousemove', move);
+            overlay.addEventListener('mouseup', end);
+
+            function drawSwipe() {
+                ovCtx.clearRect(0, 0, overlay.width, overlay.height);
+                if (path.length >= 2) {
+                    ovCtx.save();
+                    ovCtx.lineWidth = 56; ovCtx.lineCap = 'round'; ovCtx.lineJoin = 'round';
+                    ovCtx.strokeStyle = 'rgba(52,211,153,0.5)';
+                    ovCtx.beginPath();
+                    ovCtx.moveTo(path[0].x, path[0].y);
+                    for (let i = 1; i < path.length; i++) ovCtx.lineTo(path[i].x, path[i].y);
+                    ovCtx.stroke();
+                    ovCtx.restore();
+                }
+                if (bbox) {
+                    ovCtx.save();
+                    ovCtx.setLineDash([6, 4]); ovCtx.strokeStyle = '#34d399'; ovCtx.lineWidth = 2;
+                    ovCtx.strokeRect(bbox.x, bbox.y, bbox.w, bbox.h);
+                    ovCtx.restore();
+                }
+            }
+            function computeBBox() {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of path) {
+                    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+                    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+                }
+                const r = 28; // half the 56px stroke
+                const x = Math.max(0, minX - r), y = Math.max(0, minY - r);
+                bbox = {
+                    x, y,
+                    w: Math.min(overlay.width, maxX + r) - x,
+                    h: Math.min(overlay.height, maxY + r) - y
+                };
+            }
+
+            // Crop the swiped region from the ORIGINAL image (contain-fit, no transform)
+            // and upscale + preprocess it for OCR.
+            function cropRegion() {
+                const natW = ocrImage.naturalWidth, natH = ocrImage.naturalHeight;
+                if (!natW || !bbox) return;
+                const areaW = overlay.width, areaH = overlay.height;
+                const ratio = Math.min(areaW / natW, areaH / natH);
+                const dispW = natW * ratio, dispH = natH * ratio;
+                const offX = (areaW - dispW) / 2, offY = (areaH - dispH) / 2;
+                let ix = (bbox.x - offX) / ratio, iy = (bbox.y - offY) / ratio;
+                let iw = bbox.w / ratio, ih = bbox.h / ratio;
+                ix = Math.max(0, Math.min(ix, natW)); iy = Math.max(0, Math.min(iy, natH));
+                iw = Math.max(1, Math.min(iw, natW - ix)); ih = Math.max(1, Math.min(ih, natH - iy));
+                const UP = 2;
+                cropPreview.width = Math.round(iw * UP);
+                cropPreview.height = Math.round(ih * UP);
+                cropCtx.drawImage(ocrImage, ix, iy, iw, ih, 0, 0, cropPreview.width, cropPreview.height);
+                preprocess(cropCtx, cropPreview.width, cropPreview.height);
+                cropWrap.classList.remove('ocr-hidden');
+            }
+
+            // Grayscale -> contrast stretch -> Otsu binarization, in place.
+            function preprocess(ctx, w, h) {
+                const img = ctx.getImageData(0, 0, w, h);
+                const d = img.data, n = w * h;
+                const gray = new Uint8Array(n);
+                let mn = 255, mx = 0;
+                for (let i = 0; i < n; i++) {
+                    const gi = i * 4;
+                    const g = Math.round(0.299 * d[gi] + 0.587 * d[gi + 1] + 0.114 * d[gi + 2]);
+                    gray[i] = g; if (g < mn) mn = g; if (g > mx) mx = g;
+                }
+                const range = (mx - mn) || 1;
+                for (let i = 0; i < n; i++) gray[i] = Math.round(((gray[i] - mn) / range) * 255);
+                const hist = new Int32Array(256);
+                for (let i = 0; i < n; i++) hist[gray[i]]++;
+                let sum = 0; for (let t = 0; t < 256; t++) sum += t * hist[t];
+                let sumB = 0, wB = 0, maxVar = 0, thr = 128;
+                for (let t = 0; t < 256; t++) {
+                    wB += hist[t]; if (!wB) continue;
+                    const wF = n - wB; if (!wF) break;
+                    sumB += t * hist[t];
+                    const mB = sumB / wB, mF = (sum - sumB) / wF;
+                    const v = wB * wF * (mB - mF) * (mB - mF);
+                    if (v > maxVar) { maxVar = v; thr = t; }
+                }
+                for (let i = 0; i < n; i++) {
+                    const val = gray[i] > thr ? 255 : 0, gi = i * 4;
+                    d[gi] = d[gi + 1] = d[gi + 2] = val;
+                }
+                ctx.putImageData(img, 0, 0);
+            }
+
+            async function runOCR() {
+                if (typeof Tesseract === 'undefined') {
+                    ocrValue.value = ''; resultRow.classList.remove('ocr-hidden');
+                    ocrConfidence.textContent = 'OCR unavailable (offline?)';
+                    return;
+                }
+                loadingEl.classList.remove('ocr-hidden');
+                resultRow.classList.add('ocr-hidden');
+                useBtn.disabled = true;
+                try {
+                    if (!worker) {
+                        worker = await Tesseract.createWorker('eng', 1);
+                        await worker.setParameters({
+                            tessedit_char_whitelist: '0123456789.',
+                            tessedit_pageseg_mode: '7' // single text line
+                        });
+                    }
+                    const blob = await new Promise(r => cropPreview.toBlob(r, 'image/png'));
+                    const { data } = await worker.recognize(blob);
+                    const text = (data.text || '').trim().replace(/\s+/g, '');
+                    const conf = Math.round(data.confidence || 0);
+                    loadingEl.classList.add('ocr-hidden');
+                    resultRow.classList.remove('ocr-hidden');
+                    ocrValue.value = text;
+                    ocrConfidence.textContent = text ? conf + '%' : 'no digits';
+                    ocrConfidence.style.color = conf >= 70 ? '#22c55e' : '#f59e0b';
+                    useBtn.disabled = !text;
+                } catch (err) {
+                    console.error('OCR error:', err);
+                    loadingEl.classList.add('ocr-hidden');
+                    resultRow.classList.remove('ocr-hidden');
+                    ocrValue.value = '';
+                    ocrConfidence.textContent = 'OCR failed';
+                }
+            }
+
+            useBtn.addEventListener('click', () => {
+                if (targetInput) {
+                    const raw = ocrValue.value.trim();
+                    targetInput.value = raw;                 // number input accepts numeric text
+                    targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                closeModal();
+            });
+        })();
     </script>
 </body>
 </html>

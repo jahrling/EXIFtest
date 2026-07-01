@@ -530,6 +530,62 @@
             color: #721c24;
             display: block;
         }
+
+        /* ---- iOS-style scroll-snap time wheel (H : M : S) ---- */
+        .wheel-picker {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+            gap: 2px;
+            height: 150px;                 /* 5 rows * 30px */
+            background: #f8f9fa;
+            border: 1px solid #d1d5db;
+            border-radius: 12px;
+            overflow: hidden;
+            user-select: none;
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
+                    mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
+        }
+        .wheel-col {
+            flex: 0 1 68px;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            padding: 60px 0;               /* so first/last item can center */
+            text-align: center;
+            touch-action: pan-y;
+            outline: none;
+        }
+        .wheel-col::-webkit-scrollbar { display: none; }
+        .wheel-item {
+            height: 30px;
+            line-height: 30px;
+            scroll-snap-align: center;
+            font-size: 20px;
+            font-variant-numeric: tabular-nums;
+            color: #6b7280;
+            cursor: pointer;
+        }
+        .wheel-sep {
+            align-self: center;
+            font-size: 20px;
+            font-weight: 600;
+            color: #9ca3af;
+            padding-bottom: 2px;
+        }
+        .wheel-band {
+            position: absolute;
+            left: 6px; right: 6px;
+            top: 60px; height: 30px;
+            border-top: 1px solid rgba(0,120,212,0.35);
+            border-bottom: 1px solid rgba(0,120,212,0.35);
+            background: rgba(0,120,212,0.07);
+            border-radius: 6px;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -663,14 +719,24 @@
                 </div>
                 
                 <div id="manualDateTimeInput" class="timestamp-display hidden">
-                    <div style="color: #d97706; font-weight: 600; margin-bottom: 10px;">⚠️ No timestamp found in photo. Please enter the date and time when this photo was taken:</div>
+                    <div style="color: #d97706; font-weight: 600; margin-bottom: 10px;">⚠️ No timestamp found in photo. Enter the date and time this photo was taken, and confirm the <strong>Timezone</strong> above matches where it was taken (no GPS means it can't be detected automatically).</div>
                     <div class="form-group">
                         <label for="manualDate">Date</label>
                         <input type="date" id="manualDate" required>
                     </div>
                     <div class="form-group">
-                        <label for="manualTime">Time</label>
-                        <input type="time" id="manualTime" step="1" required>
+                        <label>Time (24-hour · HH : MM : SS)</label>
+                        <div class="wheel-picker" id="timeWheel" role="group" aria-label="Time picker">
+                            <div class="wheel-col" id="wheelHours" tabindex="0" aria-label="Hours"></div>
+                            <div class="wheel-sep">:</div>
+                            <div class="wheel-col" id="wheelMinutes" tabindex="0" aria-label="Minutes"></div>
+                            <div class="wheel-sep">:</div>
+                            <div class="wheel-col" id="wheelSeconds" tabindex="0" aria-label="Seconds"></div>
+                            <div class="wheel-band" aria-hidden="true"></div>
+                        </div>
+                        <!-- Wheels drive these hidden fields; the rest of the app reads them unchanged. -->
+                        <input type="hidden" id="manualTime">
+                        <input type="hidden" id="manualSeconds" value="0">
                     </div>
                 </div>
             </div>
@@ -749,10 +815,110 @@
         const manualDateTimeInput = document.getElementById('manualDateTimeInput');
         const manualDate = document.getElementById('manualDate');
         const manualTime = document.getElementById('manualTime');
+        const manualSeconds = document.getElementById('manualSeconds');
         const saveSharePointBtn = document.getElementById('saveSharePointBtn');
         const exifToggle = document.getElementById('exifToggle');
         const exifToggleIcon = document.getElementById('exifToggleIcon');
         const exifData = document.getElementById('exifData');
+
+        // Default the timezone dropdown to THIS device's timezone, so manual
+        // entries (which have no GPS to auto-detect from) aren't silently
+        // stamped with the hardcoded Central-Time default. GPS detection, when
+        // available, still overrides this later.
+        function setDefaultTimezoneFromDevice() {
+            // JS getTimezoneOffset() returns minutes BEHIND UTC (e.g. +360 for
+            // UTC-06:00), so the real offset is its negation.
+            const offsetMin = -new Date().getTimezoneOffset();
+            const sign = offsetMin >= 0 ? '+' : '-';
+            const abs = Math.abs(offsetMin);
+            const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+            const mm = String(abs % 60).padStart(2, '0');
+            const value = `UTC${sign}${hh}:${mm}`;
+            if ([...timezone.options].some(o => o.value === value)) {
+                timezone.value = value;
+                console.log('Default timezone set from device:', value);
+            } else {
+                console.log('Device timezone', value, 'not in list; keeping default');
+            }
+        }
+        setDefaultTimezoneFromDevice();
+
+        // Read the manual seconds field, clamped to 0-59.
+        function getManualSeconds() {
+            const v = parseInt(manualSeconds.value, 10);
+            if (isNaN(v)) return 0;
+            return Math.min(59, Math.max(0, v));
+        }
+
+        // ---- iOS-style scroll-snap time wheel ----
+        // The native <input type="time"> won't expose a seconds wheel on iOS,
+        // so we roll our own H/M/S wheel with CSS scroll-snap and feed the
+        // selected values into the hidden manualTime / manualSeconds fields.
+        const WHEEL_ITEM_H = 30; // must match .wheel-item height in CSS
+        const wheelHours = document.getElementById('wheelHours');
+        const wheelMinutes = document.getElementById('wheelMinutes');
+        const wheelSeconds = document.getElementById('wheelSeconds');
+        const wheelPad = (n) => String(n).padStart(2, '0');
+
+        function buildWheel(col, count) {
+            const frag = document.createDocumentFragment();
+            for (let i = 0; i < count; i++) {
+                const item = document.createElement('div');
+                item.className = 'wheel-item';
+                item.textContent = wheelPad(i);
+                frag.appendChild(item);
+            }
+            col.appendChild(frag);
+        }
+
+        function wheelValue(col) {
+            return Math.round(col.scrollTop / WHEEL_ITEM_H);
+        }
+
+        function setWheel(col, val, smooth) {
+            col.scrollTo({ top: val * WHEEL_ITEM_H, behavior: smooth ? 'smooth' : 'auto' });
+        }
+
+        // Push the wheel selection into the hidden fields the rest of the app reads.
+        function syncManualFromWheels() {
+            const h = Math.min(23, wheelValue(wheelHours));
+            const m = Math.min(59, wheelValue(wheelMinutes));
+            const s = Math.min(59, wheelValue(wheelSeconds));
+            manualTime.value = `${wheelPad(h)}:${wheelPad(m)}`;
+            manualSeconds.value = String(s);
+        }
+
+        // Position the wheels; used for defaults. rAF so scrollTo lands after
+        // the manual box is un-hidden and laid out.
+        function setWheelTime(h, m, s) {
+            requestAnimationFrame(() => {
+                setWheel(wheelHours, h, false);
+                setWheel(wheelMinutes, m, false);
+                setWheel(wheelSeconds, s, false);
+                syncManualFromWheels();
+            });
+        }
+
+        buildWheel(wheelHours, 24);
+        buildWheel(wheelMinutes, 60);
+        buildWheel(wheelSeconds, 60);
+
+        [wheelHours, wheelMinutes, wheelSeconds].forEach((col) => {
+            let settle;
+            col.addEventListener('scroll', () => {
+                clearTimeout(settle);
+                settle = setTimeout(() => {
+                    syncManualFromWheels();
+                    updateTimestampDisplay(false); // manual entry => not from camera
+                }, 120);
+            }, { passive: true });
+            // Tap a value to scroll it to the center band (desktop + accessibility).
+            col.addEventListener('click', (e) => {
+                const item = e.target.closest('.wheel-item');
+                if (!item) return;
+                setWheel(col, [...col.children].indexOf(item), true);
+            });
+        });
 
         // Click to upload
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -1087,14 +1253,15 @@
                             timestampDisplay.classList.add('hidden');
                             manualDateTimeInput.classList.remove('hidden');
                             
-                            // Set default values to today
+                            // Set default values to now (device-local wall clock).
                             const now = new Date();
-                            manualDate.value = now.toISOString().split('T')[0];
-                            manualTime.value = now.toTimeString().split(' ')[0];
-                            
-                            // Update display when user changes values
+                            const pad = (n) => String(n).padStart(2, '0');
+                            manualDate.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+                            setWheelTime(now.getHours(), now.getMinutes(), now.getSeconds());
+
+                            // Update display when the date changes. The time wheels
+                            // update the display via their own scroll handler.
                             manualDate.addEventListener('change', () => updateTimestampDisplay(isFromCamera));
-                            manualTime.addEventListener('change', () => updateTimestampDisplay(isFromCamera));
                         }
                     });
                 } catch (error) {
@@ -1236,7 +1403,7 @@
                     parseInt(dateParts[2]),
                     parseInt(timeParts[0]),
                     parseInt(timeParts[1]),
-                    parseInt(timeParts[2] || 0)
+                    getManualSeconds()
                 ));
                 timeSource = ' [Manual Entry]';
             }
@@ -1316,7 +1483,7 @@
                     parseInt(dateParts[2]),
                     parseInt(timeParts[0]),
                     parseInt(timeParts[1]),
-                    parseInt(timeParts[2] || 0)
+                    getManualSeconds()
                 ));
             } else if (photoCaptureTime) {
                 // Use capture time
@@ -1384,7 +1551,7 @@
                     parseInt(dateParts[2]),
                     parseInt(timeParts[0]),
                     parseInt(timeParts[1]),
-                    parseInt(timeParts[2] || 0)
+                    getManualSeconds()
                 ));
             } else if (photoCaptureTime) {
                 // Use capture time
@@ -2156,7 +2323,8 @@
             manualDateTimeInput.classList.add('hidden');
             manualDate.value = '';
             manualTime.value = '';
-            
+            manualSeconds.value = '0';
+
             // Reset GPS display
             const gpsDisplay = document.getElementById('gpsDisplay');
             if (gpsDisplay) {

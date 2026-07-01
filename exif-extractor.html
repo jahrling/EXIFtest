@@ -663,14 +663,18 @@
                 </div>
                 
                 <div id="manualDateTimeInput" class="timestamp-display hidden">
-                    <div style="color: #d97706; font-weight: 600; margin-bottom: 10px;">⚠️ No timestamp found in photo. Please enter the date and time when this photo was taken:</div>
+                    <div style="color: #d97706; font-weight: 600; margin-bottom: 10px;">⚠️ No timestamp found in photo. Enter the date and time this photo was taken, and confirm the <strong>Timezone</strong> above matches where it was taken (no GPS means it can't be detected automatically).</div>
                     <div class="form-group">
                         <label for="manualDate">Date</label>
                         <input type="date" id="manualDate" required>
                     </div>
                     <div class="form-group">
-                        <label for="manualTime">Time</label>
-                        <input type="time" id="manualTime" step="1" required>
+                        <label for="manualTime">Time (HH:MM)</label>
+                        <input type="time" id="manualTime" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="manualSeconds">Seconds</label>
+                        <input type="number" id="manualSeconds" min="0" max="59" step="1" value="0" inputmode="numeric" required>
                     </div>
                 </div>
             </div>
@@ -749,10 +753,40 @@
         const manualDateTimeInput = document.getElementById('manualDateTimeInput');
         const manualDate = document.getElementById('manualDate');
         const manualTime = document.getElementById('manualTime');
+        const manualSeconds = document.getElementById('manualSeconds');
         const saveSharePointBtn = document.getElementById('saveSharePointBtn');
         const exifToggle = document.getElementById('exifToggle');
         const exifToggleIcon = document.getElementById('exifToggleIcon');
         const exifData = document.getElementById('exifData');
+
+        // Default the timezone dropdown to THIS device's timezone, so manual
+        // entries (which have no GPS to auto-detect from) aren't silently
+        // stamped with the hardcoded Central-Time default. GPS detection, when
+        // available, still overrides this later.
+        function setDefaultTimezoneFromDevice() {
+            // JS getTimezoneOffset() returns minutes BEHIND UTC (e.g. +360 for
+            // UTC-06:00), so the real offset is its negation.
+            const offsetMin = -new Date().getTimezoneOffset();
+            const sign = offsetMin >= 0 ? '+' : '-';
+            const abs = Math.abs(offsetMin);
+            const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+            const mm = String(abs % 60).padStart(2, '0');
+            const value = `UTC${sign}${hh}:${mm}`;
+            if ([...timezone.options].some(o => o.value === value)) {
+                timezone.value = value;
+                console.log('Default timezone set from device:', value);
+            } else {
+                console.log('Device timezone', value, 'not in list; keeping default');
+            }
+        }
+        setDefaultTimezoneFromDevice();
+
+        // Read the manual seconds field, clamped to 0-59.
+        function getManualSeconds() {
+            const v = parseInt(manualSeconds.value, 10);
+            if (isNaN(v)) return 0;
+            return Math.min(59, Math.max(0, v));
+        }
 
         // Click to upload
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -1087,14 +1121,17 @@
                             timestampDisplay.classList.add('hidden');
                             manualDateTimeInput.classList.remove('hidden');
                             
-                            // Set default values to today
+                            // Set default values to now (device-local wall clock).
                             const now = new Date();
-                            manualDate.value = now.toISOString().split('T')[0];
-                            manualTime.value = now.toTimeString().split(' ')[0];
-                            
+                            const pad = (n) => String(n).padStart(2, '0');
+                            manualDate.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+                            manualTime.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                            manualSeconds.value = now.getSeconds();
+
                             // Update display when user changes values
                             manualDate.addEventListener('change', () => updateTimestampDisplay(isFromCamera));
                             manualTime.addEventListener('change', () => updateTimestampDisplay(isFromCamera));
+                            manualSeconds.addEventListener('input', () => updateTimestampDisplay(isFromCamera));
                         }
                     });
                 } catch (error) {
@@ -1236,7 +1273,7 @@
                     parseInt(dateParts[2]),
                     parseInt(timeParts[0]),
                     parseInt(timeParts[1]),
-                    parseInt(timeParts[2] || 0)
+                    getManualSeconds()
                 ));
                 timeSource = ' [Manual Entry]';
             }
@@ -1316,7 +1353,7 @@
                     parseInt(dateParts[2]),
                     parseInt(timeParts[0]),
                     parseInt(timeParts[1]),
-                    parseInt(timeParts[2] || 0)
+                    getManualSeconds()
                 ));
             } else if (photoCaptureTime) {
                 // Use capture time
@@ -1384,7 +1421,7 @@
                     parseInt(dateParts[2]),
                     parseInt(timeParts[0]),
                     parseInt(timeParts[1]),
-                    parseInt(timeParts[2] || 0)
+                    getManualSeconds()
                 ));
             } else if (photoCaptureTime) {
                 // Use capture time
@@ -2156,7 +2193,8 @@
             manualDateTimeInput.classList.add('hidden');
             manualDate.value = '';
             manualTime.value = '';
-            
+            manualSeconds.value = '0';
+
             // Reset GPS display
             const gpsDisplay = document.getElementById('gpsDisplay');
             if (gpsDisplay) {

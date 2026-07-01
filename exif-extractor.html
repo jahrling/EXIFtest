@@ -821,26 +821,77 @@
         const exifToggleIcon = document.getElementById('exifToggleIcon');
         const exifData = document.getElementById('exifData');
 
-        // Default the timezone dropdown to THIS device's timezone, so manual
-        // entries (which have no GPS to auto-detect from) aren't silently
-        // stamped with the hardcoded Central-Time default. GPS detection, when
-        // available, still overrides this later.
-        function setDefaultTimezoneFromDevice() {
-            // JS getTimezoneOffset() returns minutes BEHIND UTC (e.g. +360 for
-            // UTC-06:00), so the real offset is its negation.
-            const offsetMin = -new Date().getTimezoneOffset();
-            const sign = offsetMin >= 0 ? '+' : '-';
-            const abs = Math.abs(offsetMin);
+        // ---- Device / DST-aware timezone helpers ----
+        // The dropdown offers fixed UTC offsets. We pick the option matching the
+        // DEVICE's timezone for the relevant DATE, so manual entries (which have
+        // no GPS to detect from) get the right offset -- including across
+        // daylight-saving boundaries. GPS detection and an explicit user choice
+        // both take precedence over this.
+        let userPickedTimezone = false;
+
+        function getDeviceTimeZone() {
+            try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; }
+            catch (e) { return null; }
+        }
+
+        // Offset in minutes (e.g. -360 for CST, -300 for CDT) that `timeZone`
+        // is at the given instant. DST-aware, via Intl -- no library needed.
+        function zoneOffsetMinutes(instant, timeZone) {
+            const dtf = new Intl.DateTimeFormat('en-US', {
+                timeZone, hour12: false,
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+            const p = {};
+            for (const part of dtf.formatToParts(instant)) p[part.type] = part.value;
+            const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+            return Math.round((asUTC - instant.getTime()) / 60000);
+        }
+
+        function offsetToUtcString(min) {
+            const sign = min >= 0 ? '+' : '-';
+            const abs = Math.abs(min);
             const hh = String(Math.floor(abs / 60)).padStart(2, '0');
             const mm = String(abs % 60).padStart(2, '0');
-            const value = `UTC${sign}${hh}:${mm}`;
+            return `UTC${sign}${hh}:${mm}`;
+        }
+
+        // Select the dropdown option matching value ("UTC-06:00") if it exists.
+        function selectTimezoneOption(value, why) {
             if ([...timezone.options].some(o => o.value === value)) {
                 timezone.value = value;
-                console.log('Default timezone set from device:', value);
-            } else {
-                console.log('Device timezone', value, 'not in list; keeping default');
+                console.log(`Timezone set to ${value} (${why})`);
+                return true;
             }
+            console.log(`Timezone ${value} not in dropdown; keeping current (${why})`);
+            return false;
         }
+
+        // On load: default to the device's CURRENT offset (DST-aware). Falls back
+        // to getTimezoneOffset() if Intl can't resolve a zone.
+        function setDefaultTimezoneFromDevice() {
+            if (userPickedTimezone) return;
+            const zone = getDeviceTimeZone();
+            const min = zone ? zoneOffsetMinutes(new Date(), zone) : -new Date().getTimezoneOffset();
+            selectTimezoneOption(offsetToUtcString(min), 'device, now');
+        }
+
+        // In manual mode: pick the offset the device's zone had ON THE ENTERED
+        // DATE. So a January photo entered in July gets standard time, not the
+        // current daylight offset. Respects an explicit user choice.
+        function applyDstAwareTimezoneForManualDate() {
+            if (userPickedTimezone) return;
+            const zone = getDeviceTimeZone();
+            if (!zone || !manualDate.value) return;
+            const [Y, M, D] = manualDate.value.split('-').map(Number);
+            // Noon UTC of the entered day: unambiguously on one side of any DST switch.
+            const instant = new Date(Date.UTC(Y, M - 1, D, 12, 0, 0));
+            selectTimezoneOption(
+                offsetToUtcString(zoneOffsetMinutes(instant, zone)),
+                `device zone ${zone} on ${manualDate.value}`
+            );
+        }
+
         setDefaultTimezoneFromDevice();
 
         // Read the manual seconds field, clamped to 0-59.
@@ -965,8 +1016,10 @@
 
         // Timezone change
         timezone.addEventListener('change', () => {
+            // User took manual control -- stop auto-picking the zone for them.
+            userPickedTimezone = true;
             // Determine if we're using camera time by checking if manual input is hidden
-            const isFromCamera = manualDateTimeInput.classList.contains('hidden') && 
+            const isFromCamera = manualDateTimeInput.classList.contains('hidden') &&
                                 !timestampDisplay.classList.contains('hidden');
             updateTimestampDisplay(isFromCamera);
         });
@@ -1258,10 +1311,15 @@
                             const pad = (n) => String(n).padStart(2, '0');
                             manualDate.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
                             setWheelTime(now.getHours(), now.getMinutes(), now.getSeconds());
+                            applyDstAwareTimezoneForManualDate();
 
-                            // Update display when the date changes. The time wheels
-                            // update the display via their own scroll handler.
-                            manualDate.addEventListener('change', () => updateTimestampDisplay(isFromCamera));
+                            // Re-pick the DST-correct offset for the entered date and
+                            // refresh the display when the date changes. The time
+                            // wheels refresh the display via their own scroll handler.
+                            manualDate.addEventListener('change', () => {
+                                applyDstAwareTimezoneForManualDate();
+                                updateTimestampDisplay(isFromCamera);
+                            });
                         }
                     });
                 } catch (error) {
@@ -2324,6 +2382,8 @@
             manualDate.value = '';
             manualTime.value = '';
             manualSeconds.value = '0';
+            userPickedTimezone = false; // let auto-pick resume for the next photo
+            setDefaultTimezoneFromDevice();
 
             // Reset GPS display
             const gpsDisplay = document.getElementById('gpsDisplay');
